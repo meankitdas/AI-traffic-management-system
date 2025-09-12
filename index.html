@@ -1303,15 +1303,15 @@
           }
         }
 
-        // Add traffic lights only at major intersections (much reduced)
-        points.slice(0, 8).forEach((point) => {
-          // VERY restrictive - only actual traffic signals and major junctions
+        // Add traffic lights to most intersections (much more aggressive)
+        points.slice(0, 20).forEach((point) => {
+          // AGGRESSIVE PLACEMENT - most intersections get traffic lights
           if (
             point.properties.highway === "traffic_signals" ||
-            (point.properties.junction === "yes" &&
-              point.properties.highway === "primary" &&
-              Math.random() < 0.2) || // Only primary road junctions with 20% chance
-            Math.random() < 0.03 // Reduced from 0.1 to 0.03 (3% chance for random)
+            (point.properties.junction === "yes" && Math.random() < 0.8) || // 80% chance for any junction
+            (point.properties.highway === "primary" && Math.random() < 0.9) || // 90% for primary roads
+            (point.properties.highway === "secondary" && Math.random() < 0.7) || // 70% for secondary
+            Math.random() < 0.5 // 50% chance for any random point (much higher)
           ) {
             addTrafficLightAtPoint(point.coords);
           }
@@ -1459,6 +1459,8 @@
                 maxSpeed: vehicleType.speed * (2.5 + Math.random() * 1.5), // MUCH higher maximum speeds
                 currentDirection: null, // Current movement direction vector
                 targetDirection: null, // Target direction for smooth turning
+                stoppedAtLight: false, // Track if vehicle is stopped at traffic light
+                lightStopTime: 0, // How long stopped at light
               });
 
               if (vehicles.length >= maxVehicles) break;
@@ -1468,76 +1470,57 @@
       }
 
       function addTrafficLight(coords, properties) {
-        // STRATEGIC PLACEMENT: Focus on congestion control at major intersections
+        // AGGRESSIVE PLACEMENT: Add traffic lights to most intersections
         var roadLength = calculatePathLength(coords);
         var vehicleCount = properties?.vehicle_count || 0;
         var roadType = properties?.highway || "unknown";
 
-        // Enhanced intersection detection for congestion control
+        // Much more aggressive traffic light placement
         var shouldAddLight = false;
-        var congestionPriority = false;
 
-        // Check for high congestion potential
-        if (vehicleCount > 20) {
-          congestionPriority = true; // Mark as high congestion area
-        }
-
-        // Strategic placement based on road characteristics and congestion
+        // Base placement - much higher chances for all road types
         if (roadLength > 0.025) {
-          // Very long roads (major arterials) - higher chance if congested
-          shouldAddLight = congestionPriority
-            ? Math.random() < 0.8
-            : Math.random() < 0.4;
+          // Very long roads (major arterials) - almost always get lights
+          shouldAddLight = Math.random() < 0.95; // 95% chance
         } else if (roadLength > 0.02) {
-          // Long roads - moderate chance, boosted for congestion
-          shouldAddLight = congestionPriority
-            ? Math.random() < 0.6
-            : Math.random() < 0.25;
+          // Long roads - very high chance
+          shouldAddLight = Math.random() < 0.85; // 85% chance
         } else if (roadLength > 0.015) {
-          // Medium roads - only if high congestion
-          shouldAddLight = congestionPriority
-            ? Math.random() < 0.4
-            : Math.random() < 0.12;
+          // Medium roads - high chance
+          shouldAddLight = Math.random() < 0.75; // 75% chance
+        } else if (roadLength > 0.01) {
+          // Small roads - moderate chance
+          shouldAddLight = Math.random() < 0.6; // 60% chance
         } else {
-          // Small roads - only for extreme congestion
-          shouldAddLight = vehicleCount > 25 ? Math.random() < 0.3 : false;
+          // Very small roads - still some chance
+          shouldAddLight = Math.random() < 0.4; // 40% chance
         }
 
-        // Enhanced traffic volume-based placement
-        if (vehicleCount > 30) {
-          // Extreme congestion - definitely needs lights
-          shouldAddLight = Math.random() < 0.9;
-        } else if (vehicleCount > 20) {
-          // Heavy traffic - high priority
-          shouldAddLight = Math.random() < 0.7;
-        } else if (vehicleCount > 15) {
-          // Moderate traffic - medium priority
-          shouldAddLight = Math.random() < 0.5;
+        // Traffic volume boost (any traffic gets priority)
+        if (vehicleCount > 10) {
+          shouldAddLight = Math.random() < 0.9; // 90% for any significant traffic
+        } else if (vehicleCount > 5) {
+          shouldAddLight = Math.random() < 0.8; // 80% for moderate traffic
         }
 
-        // Road type priority with congestion consideration
+        // Road type priority - all road types get lights now
         if (roadType === "primary" || roadType === "trunk") {
-          // Major roads - boost if congested
-          if (congestionPriority) {
-            shouldAddLight = shouldAddLight || Math.random() < 0.7;
-          }
+          shouldAddLight = Math.random() < 0.95; // Almost guaranteed for major roads
         } else if (roadType === "secondary") {
-          // Secondary roads - only if congested
-          if (!congestionPriority) {
-            shouldAddLight = shouldAddLight && Math.random() < 0.4;
-          }
-        } else if (roadType === "residential" || roadType === "tertiary") {
-          // Small roads - only for extreme congestion
-          shouldAddLight = shouldAddLight && vehicleCount > 25;
+          shouldAddLight = Math.random() < 0.85; // Very high for secondary
+        } else if (roadType === "tertiary") {
+          shouldAddLight = Math.random() < 0.7; // High for tertiary
+        } else if (roadType === "residential") {
+          shouldAddLight = Math.random() < 0.5; // Moderate for residential
         }
 
-        // Add multiple lights for very long congested roads
+        // Add multiple lights for longer roads
         if (shouldAddLight) {
           var numLights = 1;
-          if (roadLength > 0.04 && vehicleCount > 25) {
-            numLights = 2; // Two lights for very long congested roads
-          } else if (roadLength > 0.06 && vehicleCount > 35) {
-            numLights = 3; // Three lights for extremely long busy roads
+          if (roadLength > 0.035) {
+            numLights = 3; // Three lights for very long roads
+          } else if (roadLength > 0.025) {
+            numLights = 2; // Two lights for long roads
           }
 
           for (var i = 0; i < numLights; i++) {
@@ -1772,6 +1755,70 @@
         }
       }
 
+      // Add traffic lights at road intersections
+      function addIntersectionTrafficLights() {
+        if (!allRoads || allRoads.length === 0) return;
+
+        var lightsAdded = 0;
+        var maxNewLights = 3; // Limit new lights per check
+
+        // Find intersections by checking road endpoints
+        var intersections = new Map();
+
+        allRoads.forEach((road, roadIndex) => {
+          var startPoint = road.geometry[0];
+          var endPoint = road.geometry[road.geometry.length - 1];
+
+          [startPoint, endPoint].forEach((point) => {
+            var key = `${point[0].toFixed(4)},${point[1].toFixed(4)}`;
+            if (!intersections.has(key)) {
+              intersections.set(key, {
+                position: point,
+                roads: [],
+                hasLight: false,
+              });
+            }
+            intersections.get(key).roads.push(roadIndex);
+          });
+        });
+
+        // Check for existing lights at intersections
+        Object.values(trafficLights).forEach((light) => {
+          var lightKey = `${light.position[0].toFixed(
+            4
+          )},${light.position[1].toFixed(4)}`;
+          if (intersections.has(lightKey)) {
+            intersections.get(lightKey).hasLight = true;
+          }
+        });
+
+        // Add lights to intersections with 3+ roads and no existing lights
+        intersections.forEach((intersection, key) => {
+          if (lightsAdded >= maxNewLights) return;
+
+          if (intersection.roads.length >= 3 && !intersection.hasLight) {
+            // This is a real intersection with multiple roads
+            addTrafficLightAtPoint(intersection.position);
+            lightsAdded++;
+
+            updateLog(
+              `<div class="success">🚥 Added intersection traffic light (${intersection.roads.length} roads)</div>`
+            );
+
+            // Add to sync group
+            setTimeout(() => {
+              createSyncGroups();
+            }, 100);
+          }
+        });
+
+        if (lightsAdded > 0) {
+          updateLog(
+            `<div class="success">✅ Added ${lightsAdded} intersection-based traffic lights</div>`
+          );
+        }
+      }
+
       // Get road congestion level for a vehicle's current road
       function getRoadCongestionLevel(roadIndex) {
         var roadId = `road_${roadIndex}`;
@@ -1784,7 +1831,168 @@
         );
       }
 
-      // 60 FPS Optimized Realistic Traffic System - Ultra Smooth Movement
+      // REALISTIC TRAFFIC SIMULATION - Based on IDM (Intelligent Driver Model)
+      // Parameters calibrated from real traffic research
+      var IDM_PARAMS = {
+        desiredTimeGap: 1.5, // Desired time headway (seconds) - typical safe following
+        minGap: 2.0, // Minimum gap (meters) - standstill distance
+        maxAcceleration: 2.0, // Maximum acceleration (m/s²) - typical car
+        comfortDeceleration: 3.0, // Comfortable deceleration (m/s²)
+        emergencyDeceleration: 9.0, // Emergency braking (m/s²) - max possible
+        deltaExponent: 4, // Acceleration exponent (smoothness)
+        coolness: 0.99, // Driver patience factor
+        // Lane changing parameters (MOBIL model)
+        politeness: 0.5, // Consideration for other drivers
+        laneChangeThreshold: 0.1, // Minimum advantage for lane change
+        safetyMargin: 0.8, // Safety factor for lane changes
+      };
+
+      // Calculate safe following distance using IDM
+      function calculateSafeDistance(speed, relativeSpeed, leaderSpeed) {
+        var v = speed * 50; // Convert to approximate m/s
+        var deltaV = relativeSpeed * 50;
+        var s0 = IDM_PARAMS.minGap;
+        var T = IDM_PARAMS.desiredTimeGap;
+        var a = IDM_PARAMS.maxAcceleration;
+        var b = IDM_PARAMS.comfortDeceleration;
+
+        // IDM safe distance formula
+        var sStar =
+          s0 + Math.max(0, v * T + (v * deltaV) / (2 * Math.sqrt(a * b)));
+        return sStar / 50; // Convert back to map units
+      }
+
+      // Calculate IDM acceleration for realistic speed changes
+      function calculateIDMAcceleration(vehicle, leader, trafficLight) {
+        var v = vehicle.speed * 50; // Current speed in m/s
+        var v0 = vehicle.baseSpeed * 50; // Desired speed
+        var a = IDM_PARAMS.maxAcceleration;
+        var delta = IDM_PARAMS.deltaExponent;
+
+        // Traffic light influence
+        if (trafficLight && trafficLight.distance < 0.015) {
+          if (
+            trafficLight.light.state === "red" ||
+            trafficLight.light.state === "yellow"
+          ) {
+            // Decelerate for traffic light
+            var distToLight = trafficLight.distance * 50;
+            var stoppingAccel = -(v * v) / (2 * distToLight);
+            return Math.max(-IDM_PARAMS.comfortDeceleration, stoppingAccel);
+          }
+        }
+
+        if (!leader) {
+          // Free flow acceleration
+          return a * (1 - Math.pow(v / v0, delta));
+        }
+
+        // Car following with IDM
+        var s = Math.abs(leader.distance) * 50; // Gap to leader in meters
+        var deltaV = (vehicle.speed - leader.vehicle.speed) * 50; // Speed difference
+        var sStar = calculateSafeDistance(
+          vehicle.speed,
+          vehicle.speed - leader.vehicle.speed,
+          leader.vehicle.speed
+        );
+
+        // IDM acceleration formula
+        var acceleration =
+          a * (1 - Math.pow(v / v0, delta) - Math.pow((sStar * 50) / s, 2));
+
+        // Limit to realistic values
+        return Math.max(
+          -IDM_PARAMS.emergencyDeceleration,
+          Math.min(a, acceleration)
+        );
+      }
+
+      // Realistic lane changing decision (MOBIL model)
+      function evaluateLaneChange(
+        vehicle,
+        currentLaneVehicles,
+        targetLaneVehicles
+      ) {
+        // Calculate current acceleration
+        var currentAccel = calculateIDMAcceleration(
+          vehicle,
+          findVehicleAhead(vehicle),
+          null
+        );
+
+        // Find gaps in target lane
+        var targetLeader = null;
+        var targetFollower = null;
+        var minLeaderDist = Infinity;
+        var minFollowerDist = Infinity;
+
+        targetLaneVehicles.forEach((other) => {
+          if (
+            other.pos > vehicle.pos &&
+            other.pos - vehicle.pos < minLeaderDist
+          ) {
+            minLeaderDist = other.pos - vehicle.pos;
+            targetLeader = other;
+          }
+          if (
+            other.pos < vehicle.pos &&
+            vehicle.pos - other.pos < minFollowerDist
+          ) {
+            minFollowerDist = vehicle.pos - other.pos;
+            targetFollower = other;
+          }
+        });
+
+        // Check safety criterion
+        if (targetFollower) {
+          var followerDecel = calculateIDMAcceleration(
+            targetFollower,
+            { vehicle: vehicle, distance: minFollowerDist },
+            null
+          );
+          if (
+            followerDecel <
+            -IDM_PARAMS.comfortDeceleration * IDM_PARAMS.safetyMargin
+          ) {
+            return false; // Unsafe lane change
+          }
+        }
+
+        // Calculate advantage
+        var newAccel = calculateIDMAcceleration(
+          vehicle,
+          targetLeader
+            ? { vehicle: targetLeader, distance: minLeaderDist }
+            : null,
+          null
+        );
+
+        var advantage = newAccel - currentAccel;
+
+        // Include politeness factor
+        var disadvantageToFollowers = 0;
+        if (targetFollower) {
+          var followerCurrentAccel = calculateIDMAcceleration(
+            targetFollower,
+            findVehicleAhead(targetFollower),
+            null
+          );
+          var followerNewAccel = calculateIDMAcceleration(
+            targetFollower,
+            { vehicle: vehicle, distance: minFollowerDist },
+            null
+          );
+          disadvantageToFollowers = followerCurrentAccel - followerNewAccel;
+        }
+
+        // MOBIL criterion
+        return (
+          advantage - IDM_PARAMS.politeness * disadvantageToFollowers >
+          IDM_PARAMS.laneChangeThreshold
+        );
+      }
+
+      // 60 FPS Optimized Realistic Traffic System with IDM
       function updateVehicleAgents() {
         if (vehicles.length === 0) return;
 
@@ -1810,11 +2018,29 @@
             nearbyLight = findNearestTrafficLight(currentPos);
           }
 
+          // Find leading vehicle for IDM car-following
+          var leadingVehicle = findVehicleAhead(vehicle);
+
           // Get road congestion data for this vehicle
           var roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
 
-          // Calculate realistic speed with congestion and traffic lights (60 FPS optimized)
-          var baseSpeed = vehicle.baseSpeed * speed * 0.7; // Adjust for 60 FPS (smaller increments per frame)
+          // Use IDM for realistic acceleration/deceleration
+          var idmAcceleration = calculateIDMAcceleration(
+            vehicle,
+            leadingVehicle,
+            nearbyLight
+          );
+
+          // Update vehicle speed based on IDM acceleration (dt = 0.016 for 60fps)
+          var dt = 0.016; // 16ms per frame
+          vehicle.speed = Math.max(
+            0,
+            vehicle.speed + (idmAcceleration * dt) / 50
+          );
+          vehicle.speed = Math.min(vehicle.maxSpeed, vehicle.speed);
+
+          // Calculate realistic speed with congestion influence
+          var baseSpeed = vehicle.speed * speed * 0.7; // Use IDM-calculated speed
           var speedMultiplier = 1.0;
 
           // Road congestion effects - dramatic speed differences
@@ -1836,22 +2062,55 @@
               break;
           }
 
-          // Traffic light behavior (more realistic Indian style)
-          if (nearbyLight && nearbyLight.distance < 0.008) {
+          // Traffic light behavior integrated with IDM (more realistic)
+          if (nearbyLight && nearbyLight.distance < 0.012) {
             if (nearbyLight.light.state === "red") {
-              // Only 60% actually stop, others slow down or ignore
-              if (Math.random() < 0.6) {
-                speedMultiplier *= 0.15; // Slow down significantly
-              } else {
-                speedMultiplier *= 0.7; // Some ignore red lights
+              // Red light - IDM handles deceleration naturally
+              vehicle.stoppedAtLight = true;
+              // Queue formation - vehicles stack up behind each other
+              if (leadingVehicle && leadingVehicle.vehicle.stoppedAtLight) {
+                // Maintain safe distance behind stopped vehicle
+                var queueGap = IDM_PARAMS.minGap / 50; // Convert to map units
+                if (leadingVehicle.distance < queueGap * 1.5) {
+                  speedMultiplier *= 0.02; // Stop in queue
+                }
+              } else if (Math.random() < 0.95) {
+                // First vehicle at light
+                speedMultiplier *= 0.02; // Stop at line
               }
             } else if (nearbyLight.light.state === "yellow") {
-              // Most speed up to beat the light
-              speedMultiplier *= Math.random() < 0.8 ? 1.4 : 0.3;
+              // Yellow light - decision based on distance and speed
+              var timeToLight = nearbyLight.distance / vehicle.speed;
+              var canStop = timeToLight > 2.0; // 2 seconds to stop safely
+
+              if (canStop && Math.random() < 0.85) {
+                vehicle.stoppedAtLight = true;
+                // IDM will handle smooth deceleration
+              } else {
+                // Continue through yellow
+                speedMultiplier *= 1.1;
+                vehicle.stoppedAtLight = false;
+              }
             } else {
-              // Speed up on green
-              speedMultiplier *= 1.3;
+              // Green light - traffic wave propagation
+              if (vehicle.stoppedAtLight) {
+                // Start-up delay (reaction time)
+                vehicle.startupDelay = (vehicle.startupDelay || 0) + dt;
+                if (vehicle.startupDelay > 0.5 + Math.random() * 0.3) {
+                  // Reaction time 0.5-0.8 seconds
+                  vehicle.stoppedAtLight = false;
+                  vehicle.startupDelay = 0;
+                  speedMultiplier *= 0.8; // Gradual acceleration
+                } else {
+                  speedMultiplier *= 0.02; // Still stopped
+                }
+              } else {
+                speedMultiplier *= 1.0; // Normal flow
+              }
             }
+          } else {
+            vehicle.stoppedAtLight = false;
+            vehicle.startupDelay = 0;
           }
 
           // Vehicle type behavior - much more aggressive (60fps optimized)
@@ -1874,9 +2133,48 @@
             }
           }
 
-          // Lane changing behavior
-          if (Math.random() < 0.05) {
-            vehicle.lane = vehicle.lane === "left" ? "right" : "left";
+          // Realistic lane changing using MOBIL model
+          if (updateCounter % 30 === 0 && Math.random() < 0.1) {
+            // Check every 0.5 seconds
+            // Group vehicles by lane on same road
+            var leftLaneVehicles = [];
+            var rightLaneVehicles = [];
+
+            vehicles.forEach((v) => {
+              if (v.roadIndex === vehicle.roadIndex) {
+                if (v.lane === "left") leftLaneVehicles.push(v);
+                else rightLaneVehicles.push(v);
+              }
+            });
+
+            // Evaluate lane change
+            var currentLane =
+              vehicle.lane === "left" ? leftLaneVehicles : rightLaneVehicles;
+            var targetLane =
+              vehicle.lane === "left" ? rightLaneVehicles : leftLaneVehicles;
+
+            if (evaluateLaneChange(vehicle, currentLane, targetLane)) {
+              // Execute lane change with smooth transition
+              vehicle.lane = vehicle.lane === "left" ? "right" : "left";
+              vehicle.laneChangeProgress = 0; // Track transition progress
+
+              // Indicate lane change
+              vehicle.turnSignal = vehicle.lane === "left" ? "left" : "right";
+              setTimeout(() => {
+                vehicle.turnSignal = null;
+              }, 2000);
+            }
+          }
+
+          // Smooth lane transition animation
+          if (
+            vehicle.laneChangeProgress !== undefined &&
+            vehicle.laneChangeProgress < 1
+          ) {
+            vehicle.laneChangeProgress = Math.min(
+              1,
+              vehicle.laneChangeProgress + dt * 2
+            );
           }
 
           // Random speed variations for natural movement
@@ -1891,59 +2189,200 @@
           // Move vehicle along current road
           vehicle.pos += finalSpeed;
 
-          // Handle road completion and switching
+          // Handle road completion and realistic road switching
           if (vehicle.pos > 1) {
-            // Simple road switching - pick a random connected road or loop back
-            if (Math.random() < 0.3 && allRoads.length > 1) {
-              // 30% chance to switch to a different road
-              var newRoadIndex = Math.floor(Math.random() * allRoads.length);
-              if (newRoadIndex !== vehicle.roadIndex) {
-                vehicle.roadIndex = newRoadIndex;
-                vehicle.path = allRoads[newRoadIndex].geometry;
-                vehicle.pos = 0.05; // Start a bit into the new road
+            var switched = false;
+
+            // Realistic intersection behavior with gap acceptance
+            var connectedRoads = findConnectedRoads(vehicle.roadIndex);
+
+            if (connectedRoads.length > 0) {
+              // Check for conflicting traffic at intersection
+              var canProceed = true;
+              var intersectionPoint = vehicle.path[vehicle.path.length - 1];
+
+              // Look for vehicles on intersecting roads
+              vehicles.forEach((other) => {
+                if (
+                  other !== vehicle &&
+                  other.roadIndex !== vehicle.roadIndex
+                ) {
+                  var otherPos = other.marker.getLatLng();
+                  var distToIntersection = Math.sqrt(
+                    Math.pow(intersectionPoint[0] - otherPos.lat, 2) +
+                      Math.pow(intersectionPoint[1] - otherPos.lng, 2)
+                  );
+
+                  // Check if other vehicle is approaching same intersection
+                  if (
+                    distToIntersection < 0.005 &&
+                    other.speed > vehicle.speed * 0.5
+                  ) {
+                    // Gap acceptance - wait if gap is too small
+                    var timeGap = distToIntersection / other.speed;
+                    if (timeGap < IDM_PARAMS.desiredTimeGap) {
+                      canProceed = false;
+                    }
+                  }
+                }
+              });
+
+              if (canProceed && Math.random() < 0.8) {
+                // Proceed through intersection
+                var nextRoad =
+                  connectedRoads[
+                    Math.floor(Math.random() * connectedRoads.length)
+                  ];
+
+                if (
+                  nextRoad.roadIndex !== vehicle.roadIndex &&
+                  nextRoad.roadIndex < allRoads.length
+                ) {
+                  // Realistic turning behavior
+                  vehicle.turningAtIntersection = true;
+                  vehicle.roadIndex = nextRoad.roadIndex;
+                  vehicle.path = allRoads[nextRoad.roadIndex].geometry;
+                  vehicle.pos = 0.02;
+                  switched = true;
+
+                  // Realistic speed for turns
+                  var turnAngle =
+                    nextRoad.direction === "straight"
+                      ? 0
+                      : nextRoad.direction === "right"
+                      ? 45
+                      : 90;
+                  vehicle.speed *= Math.max(0.3, 1 - turnAngle / 120);
+                }
               } else {
-                vehicle.pos = 0; // Loop back on same road
+                // Wait at intersection
+                vehicle.waitingAtIntersection = true;
+                vehicle.speed *= 0.1;
               }
-            } else {
-              vehicle.pos = 0; // Loop back to start of same road
+            }
+
+            // If no connected road found or random chance, continue on same road
+            if (!switched) {
+              if (Math.random() < 0.4 && allRoads.length > 1) {
+                // 40% chance to switch to any nearby road
+                var nearbyRoads = findNearbyRoads(vehicle.roadIndex);
+                if (nearbyRoads.length > 0) {
+                  var nearbyRoad =
+                    nearbyRoads[Math.floor(Math.random() * nearbyRoads.length)];
+                  vehicle.roadIndex = nearbyRoad;
+                  vehicle.path = allRoads[nearbyRoad].geometry;
+                  vehicle.pos = 0.02;
+                  switched = true;
+                }
+              }
+
+              // Last resort - loop back on same road (prevents vanishing)
+              if (!switched) {
+                vehicle.pos = 0.02; // Loop back to start of same road
+              }
             }
 
             // Occasionally change vehicle appearance when switching roads
-            if (Math.random() < 0.1) {
+            if (switched && Math.random() < 0.15) {
               updateVehicleAppearance(vehicle);
             }
           }
 
-          // Calculate new position on road
+          // Calculate new position on road with safety checks
           var newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
-          if (newPoint) {
+          if (
+            newPoint &&
+            newPoint.length === 2 &&
+            !isNaN(newPoint[0]) &&
+            !isNaN(newPoint[1])
+          ) {
             // Add lane offset for more realistic positioning
             var laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
             newPoint[1] += laneOffset;
 
             updates.push({ vehicle: vehicle, point: newPoint });
+          } else {
+            // Safety fallback - if position calculation fails, reset vehicle
+            console.warn(
+              "Vehicle position calculation failed, resetting vehicle"
+            );
+            vehicle.pos = 0.02;
+            vehicle.roadIndex = Math.max(
+              0,
+              Math.min(vehicle.roadIndex, allRoads.length - 1)
+            );
+            if (allRoads[vehicle.roadIndex]) {
+              vehicle.path = allRoads[vehicle.roadIndex].geometry;
+              var fallbackPoint = getPointAlongLine(vehicle.path, vehicle.pos);
+              if (fallbackPoint && fallbackPoint.length === 2) {
+                updates.push({ vehicle: vehicle, point: fallbackPoint });
+              }
+            }
           }
         }
 
         // Apply all updates at once for smooth animation
         updates.forEach(function (update) {
-          update.vehicle.marker.setLatLng(update.point);
+          // Validate the update before applying
+          if (
+            update.point &&
+            update.point.length === 2 &&
+            !isNaN(update.point[0]) &&
+            !isNaN(update.point[1])
+          ) {
+            update.vehicle.marker.setLatLng(update.point);
 
-          // Update turn signal position if it exists
-          if (update.vehicle.turnSignalMarker) {
-            update.vehicle.turnSignalMarker.setLatLng(update.point);
-            // Simple turn signal logic - show occasionally
-            if (Math.random() < 0.02) {
-              update.vehicle.turnSignalMarker.setStyle({
-                opacity: 0.6,
-                color: "#ff8800",
-                weight: 2,
+            // Visual feedback for stopped vehicles
+            if (update.vehicle.stoppedAtLight) {
+              // Change vehicle color to indicate stopped state
+              update.vehicle.marker.setStyle({
+                fillColor: "#ff4444", // Red tint for stopped vehicles
+                opacity: 0.9,
+                fillOpacity: 0.9,
               });
+              update.vehicle.lightStopTime++;
             } else {
-              update.vehicle.turnSignalMarker.setStyle({ opacity: 0 });
+              // Reset to normal color when moving
+              var vehicleTypes = {
+                car: "#ff6b6b",
+                bike: "#4ecdc4",
+                bus: "#45b7d1",
+                auto: "#f9ca24",
+                truck: "#6c5ce7",
+                scooter: "#a0e7e5",
+                taxi: "#feca57",
+                motorcycle: "#ff9ff3",
+              };
+              var normalColor = vehicleTypes[update.vehicle.type] || "#ff6b6b";
+              update.vehicle.marker.setStyle({
+                fillColor: normalColor,
+                opacity: 0.9,
+                fillOpacity: 0.8,
+              });
+              update.vehicle.lightStopTime = 0;
+            }
+
+            // Update turn signal position if it exists
+            if (update.vehicle.turnSignalMarker) {
+              update.vehicle.turnSignalMarker.setLatLng(update.point);
+              // Enhanced turn signal logic - show when stopped or turning
+              if (update.vehicle.stoppedAtLight || Math.random() < 0.02) {
+                update.vehicle.turnSignalMarker.setStyle({
+                  opacity: 0.8,
+                  color: update.vehicle.stoppedAtLight ? "#ff0000" : "#ff8800", // Red when stopped, orange when turning
+                  weight: update.vehicle.stoppedAtLight ? 3 : 2,
+                });
+              } else {
+                update.vehicle.turnSignalMarker.setStyle({ opacity: 0 });
+              }
             }
           }
         });
+
+        // Vehicle monitoring system - check for lost vehicles every 100 frames
+        if (updateCounter % 100 === 0) {
+          monitorVehicleHealth();
+        }
       }
 
       function updateVehicleRoute(vehicle) {
@@ -2268,6 +2707,170 @@
           : null;
       }
 
+      // Find roads connected to the current road at intersections
+      function findConnectedRoads(currentRoadIndex) {
+        if (!allRoads[currentRoadIndex]) return [];
+
+        var currentRoad = allRoads[currentRoadIndex];
+        var currentEndpoint =
+          currentRoad.geometry[currentRoad.geometry.length - 1];
+        var connectedRoads = [];
+        var connectionThreshold = 0.003; // 3 meters
+
+        // Find roads that start near where current road ends
+        allRoads.forEach((road, index) => {
+          if (index === currentRoadIndex) return;
+
+          var roadStart = road.geometry[0];
+          var roadEnd = road.geometry[road.geometry.length - 1];
+
+          // Check if this road's start is near current road's end
+          var distanceToStart = Math.sqrt(
+            Math.pow(currentEndpoint[0] - roadStart[0], 2) +
+              Math.pow(currentEndpoint[1] - roadStart[1], 2)
+          );
+
+          // Check if this road's end is near current road's end (for bidirectional)
+          var distanceToEnd = Math.sqrt(
+            Math.pow(currentEndpoint[0] - roadEnd[0], 2) +
+              Math.pow(currentEndpoint[1] - roadEnd[1], 2)
+          );
+
+          if (distanceToStart < connectionThreshold) {
+            connectedRoads.push({
+              roadIndex: index,
+              direction: "forward",
+              distance: distanceToStart,
+            });
+          } else if (distanceToEnd < connectionThreshold) {
+            connectedRoads.push({
+              roadIndex: index,
+              direction: "reverse",
+              distance: distanceToEnd,
+            });
+          }
+        });
+
+        // Sort by distance and return closest connections
+        return connectedRoads
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 3);
+      }
+
+      // Find roads that are geographically nearby
+      function findNearbyRoads(currentRoadIndex) {
+        if (!allRoads[currentRoadIndex]) return [];
+
+        var currentRoad = allRoads[currentRoadIndex];
+        var currentEndpoint =
+          currentRoad.geometry[currentRoad.geometry.length - 1];
+        var nearbyRoads = [];
+        var nearbyThreshold = 0.008; // 8 meters
+
+        allRoads.forEach((road, index) => {
+          if (index === currentRoadIndex) return;
+
+          // Check distance to start and middle of other roads
+          var roadStart = road.geometry[0];
+          var roadMiddle = road.geometry[Math.floor(road.geometry.length / 2)];
+
+          var distanceToStart = Math.sqrt(
+            Math.pow(currentEndpoint[0] - roadStart[0], 2) +
+              Math.pow(currentEndpoint[1] - roadStart[1], 2)
+          );
+
+          var distanceToMiddle = Math.sqrt(
+            Math.pow(currentEndpoint[0] - roadMiddle[0], 2) +
+              Math.pow(currentEndpoint[1] - roadMiddle[1], 2)
+          );
+
+          if (
+            distanceToStart < nearbyThreshold ||
+            distanceToMiddle < nearbyThreshold
+          ) {
+            nearbyRoads.push(index);
+          }
+        });
+
+        return nearbyRoads.slice(0, 5); // Return up to 5 nearby roads
+      }
+
+      // Monitor vehicle health and fix issues
+      function monitorVehicleHealth() {
+        var fixedVehicles = 0;
+        var removedVehicles = 0;
+
+        for (var i = vehicles.length - 1; i >= 0; i--) {
+          var vehicle = vehicles[i];
+          var hasIssues = false;
+
+          // Check for invalid position
+          if (isNaN(vehicle.pos) || vehicle.pos < 0 || vehicle.pos > 2) {
+            vehicle.pos = 0.02;
+            hasIssues = true;
+          }
+
+          // Check for invalid road index
+          if (!allRoads[vehicle.roadIndex]) {
+            vehicle.roadIndex = Math.floor(Math.random() * allRoads.length);
+            hasIssues = true;
+          }
+
+          // Check for invalid path
+          if (!vehicle.path || vehicle.path.length < 2) {
+            if (allRoads[vehicle.roadIndex]) {
+              vehicle.path = allRoads[vehicle.roadIndex].geometry;
+              hasIssues = true;
+            }
+          }
+
+          // Check if vehicle marker exists on map
+          if (!vehicle.marker || !vehiclesLayer.hasLayer(vehicle.marker)) {
+            // Try to recreate the marker
+            var point = getPointAlongLine(vehicle.path, vehicle.pos);
+            if (point && point.length === 2) {
+              var vehicleIcon = L.circleMarker(point, {
+                radius: 4,
+                fillColor: "#ff6b6b",
+                color: "#333",
+                weight: 1,
+                opacity: 0.9,
+                fillOpacity: 0.8,
+              });
+              vehiclesLayer.addLayer(vehicleIcon);
+              vehicle.marker = vehicleIcon;
+              hasIssues = true;
+            } else {
+              // Can't fix this vehicle, remove it
+              vehicles.splice(i, 1);
+              removedVehicles++;
+              continue;
+            }
+          }
+
+          // Check marker position validity
+          var currentPos = vehicle.marker.getLatLng();
+          if (!currentPos || isNaN(currentPos.lat) || isNaN(currentPos.lng)) {
+            var validPoint = getPointAlongLine(vehicle.path, vehicle.pos);
+            if (validPoint && validPoint.length === 2) {
+              vehicle.marker.setLatLng(validPoint);
+              hasIssues = true;
+            }
+          }
+
+          if (hasIssues) {
+            fixedVehicles++;
+          }
+        }
+
+        // Log monitoring results occasionally
+        if (fixedVehicles > 0 || removedVehicles > 0) {
+          updateLog(
+            `🔧 Vehicle health check: Fixed ${fixedVehicles}, removed ${removedVehicles} vehicles`
+          );
+        }
+      }
+
       function updateVehicleAppearance(vehicle) {
         var newTypes = [
           { color: "#ff6b6b", size: 4, speed: 0.045, type: "car" }, // 3x faster
@@ -2497,6 +3100,11 @@
         // Dynamic traffic light placement for severe congestion every 200 frames
         if (updateCounter % 200 === 0) {
           addDynamicTrafficLights();
+        }
+
+        // Add intersection-based traffic lights every 300 frames
+        if (updateCounter % 300 === 0) {
+          addIntersectionTrafficLights();
         }
 
         // Performance monitoring and auto-optimization
