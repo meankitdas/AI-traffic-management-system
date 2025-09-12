@@ -198,6 +198,16 @@
       var isPlaying = false;
       var speed = 1;
 
+      // Road Network Graph for realistic vehicle movement
+      var roadNetwork = {
+        nodes: new Map(), // Intersection points
+        edges: new Map(), // Roads connecting intersections
+        roadConnections: new Map(), // Which roads connect to which roads
+      };
+
+      // Vehicle routing and pathfinding
+      var routeCache = new Map(); // Cache for calculated routes
+
       // Road congestion tracking
       var roadCongestionLevels = {}; // Store congestion level for each road
       var roadUpdateCounter = 0;
@@ -206,6 +216,206 @@
       var neuralNetwork = null;
       var trafficData = [];
       var isTraining = false;
+
+      // Road Network Graph Functions
+      function buildRoadNetwork() {
+        roadNetwork.nodes.clear();
+        roadNetwork.edges.clear();
+        roadNetwork.roadConnections.clear();
+
+        // Build nodes (intersections) from road endpoints
+        allRoads.forEach((road, roadIndex) => {
+          const coords = road.geometry;
+          const startPoint = coords[0];
+          const endPoint = coords[coords.length - 1];
+
+          const startKey = `${startPoint[0].toFixed(6)},${startPoint[1].toFixed(
+            6
+          )}`;
+          const endKey = `${endPoint[0].toFixed(6)},${endPoint[1].toFixed(6)}`;
+
+          // Add nodes if they don't exist
+          if (!roadNetwork.nodes.has(startKey)) {
+            roadNetwork.nodes.set(startKey, {
+              position: startPoint,
+              connectedRoads: [],
+              isIntersection: false,
+            });
+          }
+          if (!roadNetwork.nodes.has(endKey)) {
+            roadNetwork.nodes.set(endKey, {
+              position: endPoint,
+              connectedRoads: [],
+              isIntersection: false,
+            });
+          }
+
+          // Add road to connected roads for both nodes
+          roadNetwork.nodes.get(startKey).connectedRoads.push({
+            roadIndex: roadIndex,
+            direction: "outgoing",
+            otherEnd: endKey,
+          });
+          roadNetwork.nodes.get(endKey).connectedRoads.push({
+            roadIndex: roadIndex,
+            direction: "incoming",
+            otherEnd: startKey,
+          });
+
+          // Store edge (road) information
+          roadNetwork.edges.set(roadIndex, {
+            startNode: startKey,
+            endNode: endKey,
+            geometry: coords,
+            length: calculatePathLength(coords),
+            roadData: road,
+          });
+        });
+
+        // Mark intersections (nodes with more than 2 connections)
+        roadNetwork.nodes.forEach((node, nodeKey) => {
+          if (node.connectedRoads.length > 2) {
+            node.isIntersection = true;
+          }
+        });
+
+        // Build road connections for pathfinding
+        buildRoadConnections();
+
+        console.log(
+          `🛣️ Road network built: ${roadNetwork.nodes.size} nodes, ${roadNetwork.edges.size} edges`
+        );
+      }
+
+      function buildRoadConnections() {
+        // For each intersection, connect all incoming roads to all outgoing roads
+        roadNetwork.nodes.forEach((node, nodeKey) => {
+          if (node.isIntersection) {
+            const incomingRoads = node.connectedRoads.filter(
+              (r) => r.direction === "incoming"
+            );
+            const outgoingRoads = node.connectedRoads.filter(
+              (r) => r.direction === "outgoing"
+            );
+
+            incomingRoads.forEach((inRoad) => {
+              if (!roadNetwork.roadConnections.has(inRoad.roadIndex)) {
+                roadNetwork.roadConnections.set(inRoad.roadIndex, []);
+              }
+
+              outgoingRoads.forEach((outRoad) => {
+                if (inRoad.roadIndex !== outRoad.roadIndex) {
+                  roadNetwork.roadConnections.get(inRoad.roadIndex).push({
+                    toRoadIndex: outRoad.roadIndex,
+                    viaIntersection: nodeKey,
+                    turnType: calculateTurnType(inRoad, outRoad, node.position),
+                  });
+                }
+              });
+            });
+          }
+        });
+      }
+
+      function calculateTurnType(inRoad, outRoad, intersection) {
+        // Calculate turn type based on road directions
+        const inRoadData = roadNetwork.edges.get(inRoad.roadIndex);
+        const outRoadData = roadNetwork.edges.get(outRoad.roadIndex);
+
+        if (!inRoadData || !outRoadData) return "straight";
+
+        // Get direction vectors
+        const inDirection = getDirectionVector(inRoadData.geometry, true); // towards intersection
+        const outDirection = getDirectionVector(outRoadData.geometry, false); // away from intersection
+
+        // Calculate angle between directions
+        const angle = calculateAngleBetweenVectors(inDirection, outDirection);
+
+        if (angle < 30) return "straight";
+        else if (angle < 120) return "right";
+        else if (angle < 240) return "u-turn";
+        else return "left";
+      }
+
+      function getDirectionVector(geometry, reverse = false) {
+        if (geometry.length < 2) return [0, 0];
+
+        let start, end;
+        if (reverse) {
+          start = geometry[geometry.length - 1];
+          end = geometry[geometry.length - 2];
+        } else {
+          start = geometry[0];
+          end = geometry[1];
+        }
+
+        return [end[0] - start[0], end[1] - start[1]];
+      }
+
+      function calculateAngleBetweenVectors(v1, v2) {
+        const dot = v1[0] * v2[0] + v1[1] * v2[1];
+        const mag1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+        const mag2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+
+        if (mag1 === 0 || mag2 === 0) return 0;
+
+        const cosAngle = dot / (mag1 * mag2);
+        const angle =
+          Math.acos(Math.max(-1, Math.min(1, cosAngle))) * (180 / Math.PI);
+
+        return angle;
+      }
+
+      // Vehicle Pathfinding
+      function findRoute(fromRoadIndex, toRoadIndex, maxHops = 5) {
+        const cacheKey = `${fromRoadIndex}-${toRoadIndex}`;
+        if (routeCache.has(cacheKey)) {
+          return routeCache.get(cacheKey);
+        }
+
+        if (fromRoadIndex === toRoadIndex) {
+          return [fromRoadIndex];
+        }
+
+        // Simple BFS pathfinding
+        const visited = new Set();
+        const queue = [
+          { roadIndex: fromRoadIndex, path: [fromRoadIndex], hops: 0 },
+        ];
+
+        while (queue.length > 0) {
+          const { roadIndex, path, hops } = queue.shift();
+
+          if (hops >= maxHops) continue;
+
+          if (visited.has(roadIndex)) continue;
+          visited.add(roadIndex);
+
+          const connections = roadNetwork.roadConnections.get(roadIndex) || [];
+
+          for (const connection of connections) {
+            const newPath = [...path, connection.toRoadIndex];
+
+            if (connection.toRoadIndex === toRoadIndex) {
+              routeCache.set(cacheKey, newPath);
+              return newPath;
+            }
+
+            if (!visited.has(connection.toRoadIndex)) {
+              queue.push({
+                roadIndex: connection.toRoadIndex,
+                path: newPath,
+                hops: hops + 1,
+              });
+            }
+          }
+        }
+
+        // No route found, return direct path
+        const fallbackRoute = [fromRoadIndex];
+        routeCache.set(cacheKey, fallbackRoute);
+        return fallbackRoute;
+      }
 
       // Initialize AI System with Hugging Face Pre-trained Models
       async function initNeuralNetwork() {
@@ -953,6 +1163,8 @@
         });
 
         createSyncGroups();
+        buildRoadNetwork(); // Build road network for realistic vehicle movement
+
         var lightCount = Object.keys(trafficLights).length;
         var lightDensity = ((lightCount / allRoads.length) * 100).toFixed(1);
 
@@ -1025,6 +1237,8 @@
 
         // Create synchronization groups after loading all lights
         createSyncGroups();
+        buildRoadNetwork(); // Build road network for realistic vehicle movement
+
         updateLog(
           `<div class="success">✅ Loaded ${roadCount} roads, ${pointCount} points, ${trafficLightCount} traffic lights (${
             Object.keys(syncGroups).length
@@ -1094,6 +1308,8 @@
             addTrafficLightAtPoint(point.coords);
           }
         });
+
+        buildRoadNetwork(); // Build road network for realistic vehicle movement
 
         updateLog(
           `<div class="success">✅ Created ${allRoads.length} synthetic roads from ${points.length} points with ${vehicles.length} vehicles</div>`
@@ -1189,9 +1405,28 @@
                 fillOpacity: 0.8,
               });
 
+              // Add turn signal indicator (initially hidden)
+              var turnSignalIcon = L.circleMarker(point, {
+                radius: vehicleType.size + 2,
+                fillColor: "transparent",
+                color: "#ffff00",
+                weight: 2,
+                opacity: 0,
+                fillOpacity: 0,
+              });
+
               vehiclesLayer.addLayer(vehicleIcon);
+              vehiclesLayer.addLayer(turnSignalIcon);
+
+              // Generate random destination for realistic routing
+              const destinationRoadIndex = Math.floor(
+                Math.random() * allRoads.length
+              );
+              const currentRoadIndex = allRoads.length - 1;
+
               vehicles.push({
                 marker: vehicleIcon,
+                turnSignalMarker: turnSignalIcon,
                 path: coords,
                 pos: Math.random(),
                 speed: vehicleType.speed * (0.7 + Math.random() * 0.6), // More speed variation
@@ -1200,7 +1435,22 @@
                 aggressiveness: 0.3 + Math.random() * 0.7, // More varied driving styles
                 lane: Math.random() < 0.5 ? "left" : "right", // Lane preference
                 lastUpdate: 0, // For smoother movement
-                roadIndex: allRoads.length - 1, // Track which road this vehicle is on
+                roadIndex: currentRoadIndex, // Track which road this vehicle is on
+                // Realistic routing information
+                route: null, // Will be calculated when needed
+                routeIndex: 0, // Current position in route
+                destinationRoadIndex: destinationRoadIndex,
+                atIntersection: false,
+                turningDirection: null, // 'left', 'right', 'straight', 'u-turn'
+                waitingAtIntersection: false,
+                intersectionWaitTime: 0,
+                // Enhanced behavior properties
+                turnSignal: null, // 'left', 'right', null
+                turnSignalTimer: 0, // Timer for blinking turn signals
+                followingDistance: 0.001 + Math.random() * 0.002, // Distance to maintain behind other vehicles
+                maxSpeed: vehicleType.speed * (1.2 + Math.random() * 0.3), // Maximum speed this vehicle can achieve
+                currentDirection: null, // Current movement direction vector
+                targetDirection: null, // Target direction for smooth turning
               });
 
               if (vehicles.length >= maxVehicles) break;
@@ -1434,150 +1684,455 @@
         );
       }
 
-      // Realistic Traffic System - Fast and Natural Movement
+      // Realistic Traffic System with Road Network Navigation
       function updateVehicleAgents() {
         if (vehicles.length === 0) return;
 
         var now = Date.now();
-
-        // Update more vehicles per frame for realistic traffic flow
-        var batchSize = Math.min(50, Math.ceil(vehicles.length / 3)); // Larger batches
+        var batchSize = Math.min(50, Math.ceil(vehicles.length / 3));
         var startIndex = (updateCounter * batchSize) % vehicles.length;
         var endIndex = Math.min(startIndex + batchSize, vehicles.length);
-
         var updates = [];
 
         for (var i = startIndex; i < endIndex; i++) {
           var vehicle = vehicles[i];
 
-          // Update all vehicles more frequently (only skip 20%)
-          if (Math.random() < 0.2) continue;
+          // Skip some vehicles for performance (only 10% now)
+          if (Math.random() < 0.1) continue;
 
           var currentPos = vehicle.marker.getLatLng();
-          var deltaTime = now - vehicle.lastUpdate;
           vehicle.lastUpdate = now;
 
-          // Realistic Indian traffic behavior
-          var nearbyLight = null;
-          if (updateCounter % 5 === 0) {
-            // Check lights more frequently
-            nearbyLight = findNearestTrafficLight(currentPos);
+          // Update vehicle route if needed
+          updateVehicleRoute(vehicle);
+
+          // Check if vehicle is at intersection
+          var intersectionStatus = checkIntersectionStatus(vehicle);
+
+          // Handle intersection logic
+          if (intersectionStatus.atIntersection) {
+            handleIntersectionBehavior(vehicle, intersectionStatus);
           }
 
-          // Get road congestion data for this vehicle
-          var roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
+          // Add realistic lane changing behavior
+          addLaneChangeLogic(vehicle, intersectionStatus);
 
-          // Calculate realistic speed with Indian traffic characteristics and congestion
-          var baseSpeed = vehicle.baseSpeed * speed; // Use base speed for calculations
-          var speedMultiplier = 1.0;
+          // Calculate movement speed based on various factors
+          var movementData = calculateVehicleMovement(
+            vehicle,
+            intersectionStatus
+          );
 
-          // Road congestion-based speed adjustment (primary factor)
-          switch (roadCongestion.level) {
-            case 4: // Severe congestion (dark red roads)
-              speedMultiplier *= 0.1; // Nearly stopped
-              break;
-            case 3: // Heavy congestion (red roads)
-              speedMultiplier *= 0.3; // Very slow
-              break;
-            case 2: // Moderate congestion (orange roads)
-              speedMultiplier *= 0.6; // Reduced speed
-              break;
-            case 1: // Light congestion (yellow roads)
-              speedMultiplier *= 0.8; // Slightly reduced
-              break;
-            default: // Free flow (green roads)
-              speedMultiplier *= 1.5; // Faster on free roads
-          }
+          // Update vehicle position
+          var newPosition = updateVehiclePosition(vehicle, movementData);
 
-          // Traffic light behavior (less strict, more realistic)
-          if (nearbyLight && nearbyLight.distance < 0.008) {
-            if (nearbyLight.light.state === "red") {
-              // Only 60% actually stop, others slow down or ignore
-              if (Math.random() < 0.6) {
-                speedMultiplier *= 0.1; // Slow down significantly
-              } else {
-                speedMultiplier *= 0.7; // Some ignore red lights (realistic for India)
-              }
-            } else if (nearbyLight.light.state === "yellow") {
-              // Most speed up to beat the light (but limited by congestion)
-              if (roadCongestion.level < 2) {
-                // Only if road isn't too congested
-                speedMultiplier *= Math.random() < 0.8 ? 1.4 : 0.3;
-              }
-            } else {
-              // Speed up on green (but limited by congestion)
-              if (roadCongestion.level === 0) {
-                speedMultiplier *= 1.3; // Extra boost on free roads
-              }
-            }
-          }
-
-          // Lane changing and overtaking behavior (more frequent in congestion)
-          var laneChangeChance = roadCongestion.level > 1 ? 0.15 : 0.05; // More lane changes in congestion
-          if (Math.random() < laneChangeChance) {
-            vehicle.lane = vehicle.lane === "left" ? "right" : "left";
-          }
-
-          // Aggressive driving patterns (realistic for Indian traffic)
-          if (vehicle.type === "bike" || vehicle.type === "motorcycle") {
-            speedMultiplier *= 1.4; // Bikes are faster and more aggressive
-            // Bikes can weave through congestion better
-            if (roadCongestion.level > 2) {
-              speedMultiplier *= 1.8; // Bikes find gaps in heavy traffic
-            }
-          } else if (vehicle.type === "bus" || vehicle.type === "truck") {
-            speedMultiplier *= 0.8; // Heavy vehicles slower
-          }
-
-          // Random speed variations for natural movement (reduced in congestion)
-          var randomVariation = roadCongestion.level > 2 ? 0.3 : 0.6;
-          speedMultiplier *= 0.8 + Math.random() * randomVariation;
-
-          // Apply aggressiveness factor (more important in congestion)
-          var aggressivenessBoost = roadCongestion.level > 1 ? 1.2 : 1.0;
-          speedMultiplier *= vehicle.aggressiveness * aggressivenessBoost;
-
-          var finalSpeed = baseSpeed * speedMultiplier;
-
-          // Move vehicle
-          vehicle.pos += finalSpeed;
-          if (vehicle.pos > 1) {
-            vehicle.pos = 0; // Loop back to start
-
-            // Occasionally change vehicle type when looping (new vehicle enters)
-            if (Math.random() < 0.1) {
-              var newTypes = [
-                { color: "#ff6b6b", size: 4, speed: 0.015 },
-                { color: "#4ecdc4", size: 3, speed: 0.025 },
-                { color: "#45b7d1", size: 6, speed: 0.012 },
-                { color: "#f9ca24", size: 3, speed: 0.018 },
-                { color: "#6c5ce7", size: 5, speed: 0.013 },
-                { color: "#a0e7e5", size: 2, speed: 0.022 },
-              ];
-              var newType =
-                newTypes[Math.floor(Math.random() * newTypes.length)];
-              vehicle.marker.setStyle({
-                fillColor: newType.color,
-                radius: newType.size,
-              });
-              vehicle.speed = newType.speed * (0.7 + Math.random() * 0.6);
-            }
-          }
-
-          var newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
-          if (newPoint) {
-            // Add slight lane offset for more realistic positioning
-            var laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
-            newPoint[1] += laneOffset;
-
-            updates.push({ vehicle: vehicle, point: newPoint });
+          if (newPosition) {
+            updates.push({ vehicle: vehicle, point: newPosition });
           }
         }
 
         // Apply all updates at once for smooth animation
         updates.forEach(function (update) {
           update.vehicle.marker.setLatLng(update.point);
+
+          // Update turn signal position and visibility
+          if (update.vehicle.turnSignalMarker) {
+            update.vehicle.turnSignalMarker.setLatLng(update.point);
+            updateTurnSignal(update.vehicle);
+          }
         });
+      }
+
+      function updateVehicleRoute(vehicle) {
+        // Generate or update route if needed
+        if (!vehicle.route || vehicle.route.length === 0) {
+          if (vehicle.roadIndex !== vehicle.destinationRoadIndex) {
+            vehicle.route = findRoute(
+              vehicle.roadIndex,
+              vehicle.destinationRoadIndex
+            );
+            vehicle.routeIndex = 0;
+          }
+        }
+
+        // Check if vehicle has reached end of current road
+        if (
+          vehicle.pos >= 0.95 &&
+          vehicle.route &&
+          vehicle.routeIndex < vehicle.route.length - 1
+        ) {
+          // Time to transition to next road
+          vehicle.routeIndex++;
+          var nextRoadIndex = vehicle.route[vehicle.routeIndex];
+
+          if (nextRoadIndex < allRoads.length) {
+            vehicle.roadIndex = nextRoadIndex;
+            vehicle.path = allRoads[nextRoadIndex].geometry;
+            vehicle.pos = 0.05; // Start a bit into the new road
+
+            // Calculate turn direction for turn signals
+            if (vehicle.routeIndex > 0) {
+              var connections =
+                roadNetwork.roadConnections.get(
+                  vehicle.route[vehicle.routeIndex - 1]
+                ) || [];
+              var connection = connections.find(
+                (c) => c.toRoadIndex === nextRoadIndex
+              );
+              if (connection) {
+                vehicle.turningDirection = connection.turnType;
+                vehicle.turnSignal =
+                  connection.turnType === "left"
+                    ? "left"
+                    : connection.turnType === "right"
+                    ? "right"
+                    : null;
+              }
+            }
+          }
+        }
+
+        // Generate new destination occasionally
+        if (
+          vehicle.roadIndex === vehicle.destinationRoadIndex ||
+          Math.random() < 0.001
+        ) {
+          vehicle.destinationRoadIndex = Math.floor(
+            Math.random() * allRoads.length
+          );
+          vehicle.route = null; // Force route recalculation
+        }
+      }
+
+      function checkIntersectionStatus(vehicle) {
+        var currentRoad = roadNetwork.edges.get(vehicle.roadIndex);
+        if (!currentRoad) return { atIntersection: false };
+
+        var nearIntersection = false;
+        var intersectionNode = null;
+        var distanceToIntersection = 1.0;
+
+        // Check if approaching end of road (intersection)
+        if (vehicle.pos > 0.8) {
+          intersectionNode = currentRoad.endNode;
+          nearIntersection = true;
+          distanceToIntersection = 1.0 - vehicle.pos;
+        } else if (vehicle.pos < 0.2) {
+          intersectionNode = currentRoad.startNode;
+          nearIntersection = true;
+          distanceToIntersection = vehicle.pos;
+        }
+
+        var node = intersectionNode
+          ? roadNetwork.nodes.get(intersectionNode)
+          : null;
+        var isRealIntersection = node && node.isIntersection;
+
+        return {
+          atIntersection: nearIntersection && isRealIntersection,
+          intersectionNode: intersectionNode,
+          node: node,
+          distanceToIntersection: distanceToIntersection,
+          isRealIntersection: isRealIntersection,
+        };
+      }
+
+      function handleIntersectionBehavior(vehicle, intersectionStatus) {
+        if (!intersectionStatus.atIntersection) return;
+
+        // Check for traffic light at intersection
+        var nearbyLight = findTrafficLightAtIntersection(
+          intersectionStatus.node.position
+        );
+
+        // Intersection waiting logic
+        if (nearbyLight && nearbyLight.light.state === "red") {
+          vehicle.waitingAtIntersection = true;
+          vehicle.intersectionWaitTime++;
+
+          // Some vehicles (especially bikes) might ignore red lights after waiting
+          if (
+            vehicle.intersectionWaitTime > 30 &&
+            (vehicle.type === "bike" || vehicle.type === "motorcycle") &&
+            Math.random() < 0.3
+          ) {
+            vehicle.waitingAtIntersection = false;
+            vehicle.intersectionWaitTime = 0;
+          }
+        } else {
+          vehicle.waitingAtIntersection = false;
+          vehicle.intersectionWaitTime = 0;
+        }
+
+        // Yield to other vehicles logic (simplified)
+        if (intersectionStatus.distanceToIntersection < 0.05) {
+          var conflictingVehicles = findConflictingVehicles(
+            vehicle,
+            intersectionStatus
+          );
+          if (conflictingVehicles.length > 0 && Math.random() < 0.7) {
+            vehicle.waitingAtIntersection = true;
+          }
+        }
+      }
+
+      function calculateVehicleMovement(vehicle, intersectionStatus) {
+        var roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
+        var baseSpeed = vehicle.baseSpeed * speed;
+        var speedMultiplier = 1.0;
+
+        // Road congestion effects
+        switch (roadCongestion.level) {
+          case 4:
+            speedMultiplier *= 0.1;
+            break;
+          case 3:
+            speedMultiplier *= 0.3;
+            break;
+          case 2:
+            speedMultiplier *= 0.6;
+            break;
+          case 1:
+            speedMultiplier *= 0.8;
+            break;
+          default:
+            speedMultiplier *= 1.2;
+            break;
+        }
+
+        // Intersection behavior
+        if (vehicle.waitingAtIntersection) {
+          speedMultiplier *= 0.05; // Almost stopped
+        } else if (
+          intersectionStatus.atIntersection &&
+          intersectionStatus.distanceToIntersection < 0.1
+        ) {
+          // Slow down when approaching intersection
+          speedMultiplier *= 0.7;
+        }
+
+        // Vehicle type behavior
+        if (vehicle.type === "bike" || vehicle.type === "motorcycle") {
+          speedMultiplier *= 1.3;
+          // Bikes can navigate through congestion better
+          if (roadCongestion.level > 2) {
+            speedMultiplier *= 1.5;
+          }
+        } else if (vehicle.type === "bus" || vehicle.type === "truck") {
+          speedMultiplier *= 0.8;
+        }
+
+        // Following distance (basic collision avoidance)
+        var vehicleAhead = findVehicleAhead(vehicle);
+        if (vehicleAhead && vehicleAhead.distance < vehicle.followingDistance) {
+          speedMultiplier *= Math.max(
+            0.1,
+            vehicleAhead.distance / vehicle.followingDistance
+          );
+        }
+
+        // Random variation and aggressiveness
+        speedMultiplier *= vehicle.aggressiveness * (0.8 + Math.random() * 0.4);
+
+        // Limit to max speed
+        var finalSpeed = Math.min(
+          vehicle.maxSpeed,
+          baseSpeed * speedMultiplier
+        );
+
+        return {
+          speed: finalSpeed,
+          speedMultiplier: speedMultiplier,
+          canMove: !vehicle.waitingAtIntersection || speedMultiplier > 0.1,
+        };
+      }
+
+      function updateVehiclePosition(vehicle, movementData) {
+        if (!movementData.canMove) return null;
+
+        // Update position along current road
+        vehicle.pos += movementData.speed;
+
+        // Handle road completion
+        if (vehicle.pos > 1) {
+          vehicle.pos = 1; // Clamp to end of road
+
+          // If no route or at end of route, loop back
+          if (
+            !vehicle.route ||
+            vehicle.routeIndex >= vehicle.route.length - 1
+          ) {
+            vehicle.pos = 0;
+            // Occasionally change vehicle appearance
+            if (Math.random() < 0.1) {
+              updateVehicleAppearance(vehicle);
+            }
+          }
+        }
+
+        // Calculate new position on road
+        var newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
+        if (!newPoint) return null;
+
+        // Add lane offset for more realistic positioning
+        var laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
+        newPoint[1] += laneOffset;
+
+        return newPoint;
+      }
+
+      function findVehicleAhead(vehicle) {
+        var minDistance = Infinity;
+        var closestVehicle = null;
+
+        vehicles.forEach((otherVehicle) => {
+          if (
+            otherVehicle === vehicle ||
+            otherVehicle.roadIndex !== vehicle.roadIndex
+          )
+            return;
+
+          // Only consider vehicles ahead on the same road
+          if (
+            otherVehicle.pos > vehicle.pos &&
+            otherVehicle.pos - vehicle.pos < 0.2
+          ) {
+            var distance = otherVehicle.pos - vehicle.pos;
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestVehicle = otherVehicle;
+            }
+          }
+        });
+
+        return closestVehicle
+          ? { vehicle: closestVehicle, distance: minDistance }
+          : null;
+      }
+
+      function findConflictingVehicles(vehicle, intersectionStatus) {
+        // Simplified conflict detection - find vehicles at same intersection
+        return vehicles.filter((otherVehicle) => {
+          if (otherVehicle === vehicle) return false;
+
+          var otherStatus = checkIntersectionStatus(otherVehicle);
+          return (
+            otherStatus.atIntersection &&
+            otherStatus.intersectionNode === intersectionStatus.intersectionNode
+          );
+        });
+      }
+
+      function findTrafficLightAtIntersection(intersectionPosition) {
+        var minDistance = Infinity;
+        var closestLight = null;
+
+        Object.values(trafficLights).forEach((light) => {
+          var distance = Math.sqrt(
+            Math.pow(intersectionPosition[0] - light.position[0], 2) +
+              Math.pow(intersectionPosition[1] - light.position[1], 2)
+          );
+
+          if (distance < 0.003 && distance < minDistance) {
+            // Within 3 meters
+            minDistance = distance;
+            closestLight = light;
+          }
+        });
+
+        return closestLight
+          ? { light: closestLight, distance: minDistance }
+          : null;
+      }
+
+      function updateVehicleAppearance(vehicle) {
+        var newTypes = [
+          { color: "#ff6b6b", size: 4, speed: 0.015, type: "car" },
+          { color: "#4ecdc4", size: 3, speed: 0.025, type: "bike" },
+          { color: "#45b7d1", size: 6, speed: 0.012, type: "bus" },
+          { color: "#f9ca24", size: 3, speed: 0.018, type: "auto" },
+          { color: "#6c5ce7", size: 5, speed: 0.013, type: "truck" },
+          { color: "#a0e7e5", size: 2, speed: 0.022, type: "scooter" },
+        ];
+
+        var newType = newTypes[Math.floor(Math.random() * newTypes.length)];
+        vehicle.marker.setStyle({
+          fillColor: newType.color,
+          radius: newType.size,
+        });
+
+        vehicle.baseSpeed = newType.speed;
+        vehicle.type = newType.type;
+        vehicle.maxSpeed = newType.speed * (1.2 + Math.random() * 0.3);
+      }
+
+      function updateTurnSignal(vehicle) {
+        if (!vehicle.turnSignalMarker) return;
+
+        vehicle.turnSignalTimer++;
+
+        // Show turn signal when turning or approaching intersection with planned turn
+        var shouldShowSignal =
+          vehicle.turnSignal !== null &&
+          (vehicle.atIntersection ||
+            (vehicle.pos > 0.7 &&
+              vehicle.turningDirection &&
+              vehicle.turningDirection !== "straight"));
+
+        if (shouldShowSignal) {
+          // Blinking effect - show/hide every 10 frames
+          var isVisible = Math.floor(vehicle.turnSignalTimer / 10) % 2 === 0;
+          var signalColor =
+            vehicle.turnSignal === "left" ? "#ff8800" : "#ff8800"; // Orange for turn signals
+
+          vehicle.turnSignalMarker.setStyle({
+            opacity: isVisible ? 0.8 : 0,
+            color: signalColor,
+            weight: 3,
+          });
+        } else {
+          // Hide turn signal
+          vehicle.turnSignalMarker.setStyle({
+            opacity: 0,
+          });
+          vehicle.turnSignalTimer = 0;
+        }
+      }
+
+      function addLaneChangeLogic(vehicle, intersectionStatus) {
+        // Enhanced lane changing logic
+        var laneChangeChance = 0.02; // Base 2% chance per frame
+
+        // Increase chance in congestion
+        var roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
+        if (roadCongestion.level > 2) {
+          laneChangeChance *= 2;
+        }
+
+        // Bikes change lanes more frequently
+        if (vehicle.type === "bike" || vehicle.type === "motorcycle") {
+          laneChangeChance *= 3;
+        }
+
+        // Don't change lanes when turning or at intersection
+        if (vehicle.turnSignal || intersectionStatus.atIntersection) {
+          laneChangeChance = 0;
+        }
+
+        if (Math.random() < laneChangeChance) {
+          vehicle.lane = vehicle.lane === "left" ? "right" : "left";
+
+          // Brief turn signal for lane change
+          if (Math.random() < 0.7) {
+            // 70% use turn signal
+            vehicle.turnSignal = vehicle.lane === "left" ? "right" : "left"; // Signal opposite of target lane
+            setTimeout(() => {
+              if (vehicle.turnSignal) {
+                vehicle.turnSignal = null;
+              }
+            }, 2000); // Clear signal after 2 seconds
+          }
+        }
       }
 
       function calculateAISpeed(nearbyLight, congestion, vehicle) {
@@ -1732,6 +2287,9 @@
                 var vehicle = vehicles.pop();
                 if (vehicle && vehicle.marker) {
                   vehiclesLayer.removeLayer(vehicle.marker);
+                  if (vehicle.turnSignalMarker) {
+                    vehiclesLayer.removeLayer(vehicle.turnSignalMarker);
+                  }
                 }
               }
               maxVehicles = vehicles.length;
@@ -1928,6 +2486,9 @@
           var keepVehicles = vehicles.slice(0, 200);
           vehicles.slice(200).forEach(function (vehicle) {
             vehiclesLayer.removeLayer(vehicle.marker);
+            if (vehicle.turnSignalMarker) {
+              vehiclesLayer.removeLayer(vehicle.turnSignalMarker);
+            }
           });
           vehicles = keepVehicles;
           updateLog(`Reduced vehicles to ${vehicles.length} for stability`);
@@ -1969,6 +2530,9 @@
               var vehicle = vehicles.pop();
               if (vehicle && vehicle.marker) {
                 vehiclesLayer.removeLayer(vehicle.marker);
+                if (vehicle.turnSignalMarker) {
+                  vehiclesLayer.removeLayer(vehicle.turnSignalMarker);
+                }
               }
             }
             maxVehicles = vehicles.length;
