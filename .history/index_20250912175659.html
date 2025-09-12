@@ -41,11 +41,6 @@
             document.getElementById("neural-status").textContent =
               "AI Status: Hugging Face Pre-trained Model Ready 🤗";
           }
-
-          // Update AI display when Hugging Face models are loaded
-          setTimeout(function () {
-            updateAIDisplay();
-          }, 500);
         } catch (error) {
           console.error("Failed to load Hugging Face models:", error);
           window.transformersLoaded = false;
@@ -273,7 +268,7 @@
           document.getElementById("neural-status").textContent =
             "AI Status: Trained!";
           console.log("🧠 Advanced AI traffic system initialized successfully");
-
+          
           // Set initial AI confidence values
           lastAIConfidence = 0.85;
           predictionCount = 1;
@@ -301,11 +296,6 @@
             });
             document.getElementById("neural-status").textContent =
               "AI Status: Fallback Model Ready";
-
-            // Set initial AI confidence values for fallback
-            lastAIConfidence = 0.65;
-            predictionCount = 1;
-            updateAIDisplay();
           } catch (fallbackError) {
             console.error("Even fallback model failed:", fallbackError);
           }
@@ -410,17 +400,14 @@
         weatherFactor,
         historicalFlow
       ) {
-        if (!neuralNetwork) {
-          // Increment prediction count even for fallback
-          predictionCount++;
+        if (!neuralNetwork)
           return {
             green: 30,
             sync: 0,
             priority: 0.5,
             flow: 1.0,
-            aiConfidence: 0.3, // Higher confidence for fallback
+            aiConfidence: 0.1,
           };
-        }
 
         try {
           // Enhanced prediction with Hugging Face models
@@ -473,7 +460,6 @@
               prediction.dispose();
 
               // Enhanced results with AI insights
-              predictionCount++; // Increment for successful Hugging Face prediction
               return {
                 green: Math.max(
                   10,
@@ -488,7 +474,7 @@
                   0.3,
                   Math.min(1.0, result[3] + embeddingInfluence * 0.2)
                 ), // AI-enhanced flow
-                aiConfidence: Math.max(0.7, embeddingInfluence), // Higher confidence from AI model
+                aiConfidence: embeddingInfluence, // Confidence from AI model
               };
             } catch (hfError) {
               console.warn(
@@ -519,24 +505,21 @@
           input.dispose();
           prediction.dispose();
 
-          predictionCount++; // Increment for successful TensorFlow prediction
           return {
             green: Math.max(15, Math.min(60, result[0] * 60)), // 15-60 seconds
             sync: result[1] * 10, // 0-10 second offset
             priority: result[2], // 0-1 priority factor
             flow: result[3], // 0-1 flow efficiency
-            aiConfidence: 0.6, // Medium-high confidence for TensorFlow
+            aiConfidence: 0.5, // Medium confidence for fallback
           };
         } catch (error) {
           console.error("AI prediction error:", error);
-          // Increment prediction count for error case
-          predictionCount++;
           return {
             green: 30,
             sync: 0,
             priority: 0.5,
             flow: 1.0,
-            aiConfidence: 0.2, // Slightly higher confidence
+            aiConfidence: 0.1,
           };
         }
       }
@@ -1821,7 +1804,7 @@
               congestionStats[2]
             } orange, ${congestedRoads} red | ${fps} fps`
           );
-
+          
           // Update AI display every 100 frames
           updateAIDisplay();
         }
@@ -1911,9 +1894,6 @@
           isPlaying = true;
           simulationInterval = setInterval(updateSimulation, 100); // Faster updates for realistic traffic (100ms)
           updateLog("▶️ Realistic traffic simulation started");
-
-          // Immediately update AI display when simulation starts
-          updateAIDisplay();
         }
       }
 
@@ -2002,16 +1982,11 @@
       // Initialize Neural Network on page load
       window.addEventListener("load", function () {
         initNeuralNetwork();
-
+        
         // Initialize AI confidence display immediately
-        setTimeout(function () {
+        setTimeout(function() {
           updateAIDisplay();
         }, 1000);
-
-        // Set up periodic AI display updates (every 5 seconds)
-        setInterval(function () {
-          updateAIDisplay();
-        }, 5000);
       });
 
       // Function to update AI display elements
@@ -2023,8 +1998,7 @@
           ).toFixed(1)}%`;
         }
         if (document.getElementById("prediction-count")) {
-          document.getElementById("prediction-count").textContent =
-            predictionCount;
+          document.getElementById("prediction-count").textContent = predictionCount;
         }
         if (document.getElementById("model-type")) {
           var modelType = window.transformersLoaded
