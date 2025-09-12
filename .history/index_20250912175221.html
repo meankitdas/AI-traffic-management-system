@@ -80,10 +80,14 @@
         font-size: 12px;
         border: 1px solid #ddd;
       }
-      .vehicle-icon {
+      .vehicle-marker {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
+        pointer-events: none;
+      }
+      .vehicle-marker div {
+        pointer-events: none;
       }
       .traffic-light-icon {
         background: transparent !important;
@@ -137,6 +141,9 @@
       <button id="reduceVehicles">Reduce Vehicles</button>
       <button id="collectData">Collect Data</button>
       <button id="trainNN">Train Neural Network</button>
+      <button id="toggleRealistic">🚗 Enhanced AI Movement</button>
+      <button id="performanceMode">⚡ Performance Mode</button>
+      <button id="loadRealData">📂 Load Real GeoJSON</button>
     </div>
     <div id="neural-status">AI Status: Initializing AI Models...</div>
     <div
@@ -173,6 +180,34 @@
       <span style="color: #8b0000; font-weight: bold">● Dark Red</span> - Severe
       Congestion (Stopped)
     </div>
+    <div
+      id="vehicle-features"
+      style="
+        background: #f8f9fa;
+        padding: 10px;
+        margin: 10px;
+        border-radius: 5px;
+        font-size: 12px;
+        border-left: 4px solid #007bff;
+      "
+    >
+      <strong>🚗 Enhanced Vehicle Features (Performance Optimized):</strong
+      ><br />
+      <span style="color: #28a745">✓ AI-Powered Pathfinding</span> - Vehicles
+      find optimal routes using A* algorithm<br />
+      <span style="color: #28a745">✓ Destination-Based Movement</span> - Each
+      vehicle has specific goals and stops<br />
+      <span style="color: #28a745">✓ Realistic Traffic Behavior</span> - Lane
+      changing, patience, driving styles<br />
+      <span style="color: #28a745">✓ Hugging Face AI Integration</span> - Smart
+      routing decisions based on traffic conditions<br />
+      <span style="color: #28a745">✓ Optimized Vehicle Rendering</span> - Simple
+      shapes instead of emojis for better performance<br />
+      <span style="color: #28a745">✓ Performance Mode</span> - Toggle for
+      reduced vehicles and faster rendering<br />
+      <span style="color: #6c757d">📊 Graph Data: </span
+      ><span id="graph-status">Loading...</span>
+    </div>
     <div id="log">Simulation Log:</div>
     <script>
       var map = L.map("map").setView([20.272, 85.824], 13); // Bhubaneswar center
@@ -192,6 +227,14 @@
       var simulationInterval;
       var isPlaying = false;
       var speed = 1;
+
+      // Enhanced Vehicle System with Real Navigation
+      var roadGraph = {}; // Graph structure from graph.json
+      var intersectionNodes = {}; // Mapping of intersections to graph nodes
+      var vehicleDestinations = {}; // Track vehicle destinations and routes
+      var routeCache = {}; // Cache for computed routes
+      var useRealisticMovement = true; // Toggle for enhanced AI movement
+      var performanceMode = false; // Toggle for performance optimization
 
       // Road congestion tracking
       var roadCongestionLevels = {}; // Store congestion level for each road
@@ -355,26 +398,26 @@
             if (lightPhase < 30) {
               newState = "green";
               newIcon = L.divIcon({
-                html: "🟢",
+                html: '<div style="width: 12px; height: 12px; background-color: #00ff00; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px #00ff00;"></div>',
                 className: "traffic-light-icon",
-                iconSize: [25, 25],
-                iconAnchor: [12, 12],
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
               });
             } else if (lightPhase < 35) {
               newState = "yellow";
               newIcon = L.divIcon({
-                html: "🟡",
+                html: '<div style="width: 12px; height: 12px; background-color: #ffff00; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px #ffff00;"></div>',
                 className: "traffic-light-icon",
-                iconSize: [25, 25],
-                iconAnchor: [12, 12],
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
               });
             } else {
               newState = "red";
               newIcon = L.divIcon({
-                html: "🔴",
+                html: '<div style="width: 12px; height: 12px; background-color: #ff0000; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px #ff0000;"></div>',
                 className: "traffic-light-icon",
-                iconSize: [25, 25],
-                iconAnchor: [12, 12],
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
               });
             }
 
@@ -794,7 +837,8 @@
       }
 
       function createDemoSimulation() {
-        // Create a realistic demo road network for Bhubaneswar with more roads
+        // Create an optimized demo road network for immediate loading
+        updateLog("🏗️ Building optimized demo traffic network...");
         var demoRoads = [
           // Major arterial roads
           [
@@ -1088,97 +1132,168 @@
           // Increase to 80% of roads get vehicles for realistic traffic
           var roadLength = calculatePathLength(coords);
           var vehiclesPerRoad = Math.min(
-            12, // Increased vehicles per road for better traffic density
-            Math.max(2, Math.floor(roadLength * 100 + vehicleCount * 0.15)) // Higher density
+            6, // Reduced vehicles per road for better performance
+            Math.max(1, Math.floor(roadLength * 50 + vehicleCount * 0.1)) // Lower density
           );
 
           for (var v = 0; v < vehiclesPerRoad; v++) {
             var point = getPointAlongLine(coords, Math.random());
             if (point) {
-              // Indian traffic mix with realistic speeds (much faster)
+              // Optimized vehicle types with simple colored circles (no emojis)
               var vehicleTypes = [
                 {
-                  icon: "🚗",
                   speed: 0.015,
                   type: "car",
                   color: "#ff6b6b",
                   size: 4,
+                  shape: "circle",
                 },
                 {
-                  icon: "🏍️",
                   speed: 0.025,
                   type: "bike",
                   color: "#4ecdc4",
                   size: 3,
+                  shape: "circle",
                 },
                 {
-                  icon: "🚌",
                   speed: 0.012,
                   type: "bus",
                   color: "#45b7d1",
                   size: 6,
+                  shape: "square",
                 },
                 {
-                  icon: "🛺",
                   speed: 0.018,
                   type: "auto",
                   color: "#f9ca24",
                   size: 3,
+                  shape: "triangle",
                 },
                 {
-                  icon: "🚚",
                   speed: 0.013,
                   type: "truck",
                   color: "#6c5ce7",
                   size: 5,
+                  shape: "square",
                 },
                 {
-                  icon: "🛴",
                   speed: 0.022,
                   type: "scooter",
                   color: "#a0e7e5",
                   size: 2,
+                  shape: "circle",
                 },
                 {
-                  icon: "🚕",
                   speed: 0.017,
                   type: "taxi",
                   color: "#feca57",
                   size: 4,
+                  shape: "diamond",
                 },
                 {
-                  icon: "🏍️",
                   speed: 0.028,
                   type: "motorcycle",
                   color: "#ff9ff3",
                   size: 3,
+                  shape: "circle",
                 },
               ];
 
               var vehicleType = vehicleTypes[Math.floor(Math.random() * 8)];
 
-              // Create more realistic vehicle markers with different sizes
-              var vehicleIcon = L.circleMarker(point, {
-                radius: vehicleType.size,
-                fillColor: vehicleType.color,
-                color: "#333",
-                weight: 1,
-                opacity: 0.9,
-                fillOpacity: 0.8,
-              });
+              // Create optimized vehicle markers based on type and shape
+              var vehicleIcon;
+
+              if (vehicleType.shape === "square") {
+                // For buses and trucks - use rectangle marker
+                vehicleIcon = L.marker(point, {
+                  icon: L.divIcon({
+                    className: "vehicle-marker",
+                    html: `<div style="width: ${
+                      vehicleType.size * 2
+                    }px; height: ${vehicleType.size * 2}px; background-color: ${
+                      vehicleType.color
+                    }; border: 1px solid #333; border-radius: 2px;"></div>`,
+                    iconSize: [vehicleType.size * 2, vehicleType.size * 2],
+                    iconAnchor: [vehicleType.size, vehicleType.size],
+                  }),
+                });
+              } else if (vehicleType.shape === "triangle") {
+                // For auto-rickshaws - use triangle marker
+                vehicleIcon = L.marker(point, {
+                  icon: L.divIcon({
+                    className: "vehicle-marker",
+                    html: `<div style="width: 0; height: 0; border-left: ${
+                      vehicleType.size
+                    }px solid transparent; border-right: ${
+                      vehicleType.size
+                    }px solid transparent; border-bottom: ${
+                      vehicleType.size * 1.5
+                    }px solid ${vehicleType.color};"></div>`,
+                    iconSize: [vehicleType.size * 2, vehicleType.size * 2],
+                    iconAnchor: [vehicleType.size, vehicleType.size],
+                  }),
+                });
+              } else if (vehicleType.shape === "diamond") {
+                // For taxis - use diamond marker
+                vehicleIcon = L.marker(point, {
+                  icon: L.divIcon({
+                    className: "vehicle-marker",
+                    html: `<div style="width: ${
+                      vehicleType.size * 2
+                    }px; height: ${vehicleType.size * 2}px; background-color: ${
+                      vehicleType.color
+                    }; border: 1px solid #333; transform: rotate(45deg);"></div>`,
+                    iconSize: [vehicleType.size * 2, vehicleType.size * 2],
+                    iconAnchor: [vehicleType.size, vehicleType.size],
+                  }),
+                });
+              } else {
+                // Default: circle marker for cars, bikes, motorcycles, scooters
+                vehicleIcon = L.circleMarker(point, {
+                  radius: vehicleType.size,
+                  fillColor: vehicleType.color,
+                  color: "#333",
+                  weight: 1,
+                  opacity: 0.9,
+                  fillOpacity: 0.8,
+                });
+              }
 
               vehiclesLayer.addLayer(vehicleIcon);
+
+              // Create realistic vehicle with destination-based behavior
+              const vehicleId = `vehicle_${vehicles.length}`;
+              const startPos = point;
+              const destinationPos = generateRandomDestination(startPos);
+              const route = findRoute(startPos, destinationPos);
+
               vehicles.push({
+                id: vehicleId,
                 marker: vehicleIcon,
                 path: coords,
                 pos: Math.random(),
-                speed: vehicleType.speed * (0.7 + Math.random() * 0.6), // More speed variation
-                baseSpeed: vehicleType.speed, // Store original speed for congestion adjustments
+                speed: vehicleType.speed * (0.7 + Math.random() * 0.6),
+                baseSpeed: vehicleType.speed,
                 type: vehicleType.type,
-                aggressiveness: 0.3 + Math.random() * 0.7, // More varied driving styles
-                lane: Math.random() < 0.5 ? "left" : "right", // Lane preference
-                lastUpdate: 0, // For smoother movement
-                roadIndex: allRoads.length - 1, // Track which road this vehicle is on
+                aggressiveness: 0.3 + Math.random() * 0.7,
+                lane: Math.random() < 0.5 ? "left" : "right",
+                lastUpdate: 0,
+                roadIndex: allRoads.length - 1,
+                // Enhanced realistic navigation properties
+                destination: destinationPos,
+                route: route,
+                currentRouteIndex: 0,
+                currentRoadSegment: coords,
+                isAtIntersection: false,
+                waitingAtLight: false,
+                stoppedTime: 0,
+                routeProgress: 0,
+                hasReachedDestination: false,
+                // AI-driven behavior properties
+                drivingStyle: generateDrivingStyle(vehicleType.type),
+                patience: Math.random() * 100, // Patience level for traffic
+                routeKnowledge: Math.random() > 0.3 ? "good" : "poor", // GPS/local knowledge
               });
 
               if (vehicles.length >= maxVehicles) break;
@@ -1237,10 +1352,10 @@
 
       function addTrafficLightAtPoint(point) {
         var trafficLightIcon = L.divIcon({
-          html: '<div style="font-size: 18px;">🚥</div>',
+          html: '<div style="width: 12px; height: 12px; background-color: #333; border-radius: 50%; border: 2px solid #fff;"></div>',
           className: "traffic-light-icon",
-          iconSize: [25, 25],
-          iconAnchor: [12, 12],
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
         });
         var light = L.marker(point, { icon: trafficLightIcon });
         intersectionsLayer.addLayer(light);
@@ -1264,10 +1379,10 @@
         } else if (feature.properties.junction === "yes") {
           // Add intersection marker
           var intersectionIcon = L.divIcon({
-            html: '<div style="font-size: 16px;">⭕</div>',
+            html: '<div style="width: 8px; height: 8px; background-color: #666; border-radius: 50%; border: 1px solid #fff;"></div>',
             className: "intersection-icon",
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+            iconSize: [10, 10],
+            iconAnchor: [5, 5],
           });
           var marker = L.marker(coords, { icon: intersectionIcon });
           intersectionsLayer.addLayer(marker);
@@ -1288,7 +1403,471 @@
         return R * c;
       }
 
-      loadGeoJSON("bhubaneswar_traffic_flow.geojson");
+      // Optimized Traffic Data Loading System
+      async function loadTrafficData() {
+        updateLog(
+          '<div class="loading">🔄 Starting optimized simulation...</div>'
+        );
+
+        // Start with demo simulation immediately for better UX
+        updateLog("✅ Creating demo traffic simulation...");
+        createDemoSimulation();
+
+        // Load additional data in background (non-blocking)
+        setTimeout(() => {
+          loadBackgroundData();
+        }, 2000);
+      }
+
+      // Load heavy data in background without blocking the UI
+      async function loadBackgroundData() {
+        // Try to load graph data with timeout
+        try {
+          updateLog("🔄 Loading graph data in background...");
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+          const graphResponse = await fetch("graph.json", {
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (graphResponse.ok) {
+            roadGraph = await graphResponse.json();
+            updateLog("✅ Road graph loaded for enhanced pathfinding");
+            document.getElementById("graph-status").textContent =
+              "Loaded successfully ✅";
+            document.getElementById("graph-status").style.color = "#28a745";
+            preprocessGraph();
+          }
+        } catch (error) {
+          if (error.name === "AbortError") {
+            updateLog("⚠️ Graph loading timeout - using demo simulation");
+          } else {
+            updateLog("⚠️ Graph loading failed - using demo simulation");
+          }
+          document.getElementById("graph-status").textContent = "Demo mode ⚠️";
+          document.getElementById("graph-status").style.color = "#ffc107";
+        }
+
+        // Try to load GeoJSON with timeout and chunking
+        setTimeout(() => {
+          loadGeoJSONWithTimeout("bhubaneswar_traffic_flow.geojson");
+        }, 1000);
+      }
+
+      // Load GeoJSON with timeout and fallback
+      function loadGeoJSONWithTimeout(urlOrFile) {
+        updateLog("🔄 Attempting to load GeoJSON (with 10s timeout)...");
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+          updateLog(
+            '<div class="error">⚠️ GeoJSON loading timeout - keeping demo simulation</div>'
+          );
+        }, 10000); // 10 second timeout
+
+        if (urlOrFile instanceof File) {
+          // Handle file upload
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            clearTimeout(timeoutId);
+            try {
+              const data = JSON.parse(e.target.result);
+              processGeoJSONOptimized(data);
+            } catch (error) {
+              updateLog(
+                '<div class="error">❌ Error parsing uploaded file</div>'
+              );
+            }
+          };
+          reader.readAsText(urlOrFile);
+        } else {
+          // Handle URL fetch
+          fetch(urlOrFile, { signal: controller.signal })
+            .then((response) => {
+              clearTimeout(timeoutId);
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              updateLog(
+                '<div class="success">✅ GeoJSON loaded! Processing...</div>'
+              );
+              processGeoJSONOptimized(data);
+            })
+            .catch((error) => {
+              if (error.name !== "AbortError") {
+                updateLog(
+                  `<div class="error">⚠️ GeoJSON failed: ${error.message}</div>`
+                );
+              }
+            });
+        }
+      }
+
+      // Preprocess graph for efficient pathfinding
+      function preprocessGraph() {
+        // Create intersection mapping and prepare for A* pathfinding
+        Object.keys(roadGraph).forEach((nodeKey) => {
+          const [lng, lat] = nodeKey.slice(1, -1).split(", ").map(parseFloat);
+          intersectionNodes[nodeKey] = {
+            position: [lat, lng],
+            connections: roadGraph[nodeKey],
+            id: nodeKey,
+          };
+        });
+
+        updateLog(
+          `📍 Processed ${
+            Object.keys(intersectionNodes).length
+          } intersection nodes`
+        );
+      }
+
+      // Optimized GeoJSON processing for large files
+      function processGeoJSONOptimized(data) {
+        updateLog("🔄 Processing GeoJSON data (optimized for large files)...");
+
+        if (!data.features || data.features.length === 0) {
+          updateLog('<div class="error">❌ No features found in GeoJSON</div>');
+          return;
+        }
+
+        // Clear existing demo data and replace with real data
+        roadsLayer.clearLayers();
+        intersectionsLayer.clearLayers();
+        vehiclesLayer.clearLayers();
+        allRoads = [];
+        allIntersections = [];
+        trafficLights = {};
+        vehicles = [];
+        syncGroups = {};
+
+        let roadCount = 0;
+        let pointCount = 0;
+        let processedCount = 0;
+        const totalFeatures = data.features.length;
+        const maxFeatures = performanceMode ? 500 : 2000; // Limit features based on performance mode
+
+        updateLog(
+          `📊 Processing ${Math.min(
+            totalFeatures,
+            maxFeatures
+          )} of ${totalFeatures} features...`
+        );
+
+        // Process features in chunks to avoid blocking the UI
+        const chunkSize = 25; // Smaller chunks for better responsiveness
+        let featureIndex = 0;
+
+        function processChunk() {
+          const endIndex = Math.min(
+            featureIndex + chunkSize,
+            Math.min(totalFeatures, maxFeatures)
+          );
+
+          for (let i = featureIndex; i < endIndex; i++) {
+            const feature = data.features[i];
+
+            if (
+              feature.geometry.type === "LineString" &&
+              feature.properties.highway &&
+              feature.properties.road_id
+            ) {
+              const coords = feature.geometry.coordinates.map((c) => [
+                c[1],
+                c[0],
+              ]);
+              const road = L.polyline(coords, { color: "gray", weight: 3 });
+              roadsLayer.addLayer(road);
+
+              allRoads.push({
+                geometry: coords,
+                properties: feature.properties,
+                layer: road,
+              });
+              roadCount++;
+
+              // Add vehicles to roads (reduced density for performance)
+              if (Math.random() < 0.5) {
+                // Only 50% of roads get vehicles
+                addVehiclesToRoad(coords, feature.properties);
+              }
+
+              // Add traffic lights (very selective)
+              if (coords.length > 3 && calculatePathLength(coords) > 0.025) {
+                addTrafficLight(coords, feature.properties);
+              }
+            } else if (feature.geometry.type === "Point") {
+              processPointFeature(feature);
+              pointCount++;
+            }
+
+            processedCount++;
+          }
+
+          // Update progress
+          if (
+            processedCount % 100 === 0 ||
+            endIndex >= Math.min(totalFeatures, maxFeatures)
+          ) {
+            const progress = Math.round(
+              (processedCount / Math.min(totalFeatures, maxFeatures)) * 100
+            );
+            updateLog(
+              `⏳ Processing: ${progress}% (${processedCount}/${Math.min(
+                totalFeatures,
+                maxFeatures
+              )} features)`
+            );
+          }
+
+          featureIndex = endIndex;
+
+          // Continue processing or finish
+          if (featureIndex < Math.min(totalFeatures, maxFeatures)) {
+            setTimeout(processChunk, 5); // Small delay to prevent UI blocking
+          } else {
+            finishProcessing();
+          }
+        }
+
+        function finishProcessing() {
+          createSyncGroups();
+          const lightCount = Object.keys(trafficLights).length;
+          const syncGroupCount = Object.keys(syncGroups).length;
+
+          updateLog(
+            `<div class="success">✅ Real GeoJSON data loaded: ${roadCount} roads, ${pointCount} points, ${lightCount} traffic lights (${syncGroupCount} sync groups), ${vehicles.length} vehicles</div>`
+          );
+
+          if (vehicles.length > 0) {
+            setTimeout(startSimulation, 1000);
+          }
+        }
+
+        // Start processing
+        processChunk();
+      }
+
+      // A* Pathfinding Algorithm for realistic route planning
+      function findRoute(startPos, endPos) {
+        const cacheKey = `${startPos[0]},${startPos[1]}-${endPos[0]},${endPos[1]}`;
+        if (routeCache[cacheKey]) {
+          return routeCache[cacheKey];
+        }
+
+        const startNode = findNearestNode(startPos);
+        const endNode = findNearestNode(endPos);
+
+        if (!startNode || !endNode) {
+          return null;
+        }
+
+        const route = aStarPathfinding(startNode, endNode);
+        routeCache[cacheKey] = route;
+        return route;
+      }
+
+      // Find nearest graph node to a position
+      function findNearestNode(position) {
+        let nearest = null;
+        let minDistance = Infinity;
+
+        Object.values(intersectionNodes).forEach((node) => {
+          const distance = calculateDistance(position, node.position);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = node;
+          }
+        });
+
+        return nearest;
+      }
+
+      // A* Pathfinding Implementation
+      function aStarPathfinding(startNode, endNode) {
+        const openSet = [startNode];
+        const closedSet = new Set();
+        const gScore = { [startNode.id]: 0 };
+        const fScore = { [startNode.id]: heuristic(startNode, endNode) };
+        const cameFrom = {};
+
+        while (openSet.length > 0) {
+          // Find node with lowest fScore
+          let current = openSet.reduce((min, node) =>
+            fScore[node.id] < fScore[min.id] ? node : min
+          );
+
+          if (current.id === endNode.id) {
+            return reconstructPath(cameFrom, current);
+          }
+
+          openSet.splice(openSet.indexOf(current), 1);
+          closedSet.add(current.id);
+
+          // Check all neighbors
+          current.connections.forEach((connection) => {
+            const neighborId = `(${connection.node[0]}, ${connection.node[1]})`;
+            const neighbor = intersectionNodes[neighborId];
+
+            if (!neighbor || closedSet.has(neighborId)) return;
+
+            const tentativeGScore = gScore[current.id] + connection.data.length;
+
+            if (!openSet.find((n) => n.id === neighborId)) {
+              openSet.push(neighbor);
+            } else if (tentativeGScore >= (gScore[neighborId] || Infinity)) {
+              return;
+            }
+
+            cameFrom[neighborId] = current;
+            gScore[neighborId] = tentativeGScore;
+            fScore[neighborId] = tentativeGScore + heuristic(neighbor, endNode);
+          });
+        }
+
+        return null; // No path found
+      }
+
+      // Heuristic function for A* (Euclidean distance)
+      function heuristic(nodeA, nodeB) {
+        return calculateDistance(nodeA.position, nodeB.position);
+      }
+
+      // Reconstruct path from A* result
+      function reconstructPath(cameFrom, current) {
+        const path = [current];
+        while (cameFrom[current.id]) {
+          current = cameFrom[current.id];
+          path.unshift(current);
+        }
+        return path;
+      }
+
+      // Generate random destination for realistic vehicle movement
+      function generateRandomDestination(startPos) {
+        // Select a random intersection as destination
+        const intersectionKeys = Object.keys(intersectionNodes);
+        if (intersectionKeys.length === 0) {
+          // Fallback to random nearby position
+          return [
+            startPos[0] + (Math.random() - 0.5) * 0.02,
+            startPos[1] + (Math.random() - 0.5) * 0.02,
+          ];
+        }
+
+        const randomIntersection =
+          intersectionKeys[Math.floor(Math.random() * intersectionKeys.length)];
+        return intersectionNodes[randomIntersection].position;
+      }
+
+      // Generate driving style based on vehicle type
+      function generateDrivingStyle(vehicleType) {
+        const styles = {
+          car: { aggression: 0.5, speedVariance: 0.3, laneChangeFreq: 0.1 },
+          bike: { aggression: 0.8, speedVariance: 0.5, laneChangeFreq: 0.3 },
+          motorcycle: {
+            aggression: 0.9,
+            speedVariance: 0.6,
+            laneChangeFreq: 0.4,
+          },
+          bus: { aggression: 0.3, speedVariance: 0.2, laneChangeFreq: 0.05 },
+          truck: { aggression: 0.2, speedVariance: 0.2, laneChangeFreq: 0.03 },
+          auto: { aggression: 0.7, speedVariance: 0.4, laneChangeFreq: 0.2 },
+          taxi: { aggression: 0.6, speedVariance: 0.4, laneChangeFreq: 0.15 },
+          scooter: {
+            aggression: 0.7,
+            speedVariance: 0.4,
+            laneChangeFreq: 0.25,
+          },
+        };
+
+        return styles[vehicleType] || styles.car;
+      }
+
+      // Enhanced AI decision-making using Hugging Face models
+      async function makeAIRoutingDecision(
+        vehicle,
+        currentPos,
+        trafficConditions
+      ) {
+        if (!window.transformersLoaded || !window.trafficPredictor) {
+          return makeBasicRoutingDecision(vehicle, trafficConditions);
+        }
+
+        try {
+          // Create context for AI model
+          const context = `Vehicle type: ${
+            vehicle.type
+          }, patience: ${vehicle.patience.toFixed(0)}, 
+                          congestion: ${
+                            trafficConditions.congestion
+                          }, traffic light: ${trafficConditions.lightState}, 
+                          route knowledge: ${
+                            vehicle.routeKnowledge
+                          }, driving style: aggressive ${(
+            vehicle.drivingStyle.aggression * 100
+          ).toFixed(0)}%`;
+
+          // Get AI embeddings for decision making
+          const embeddings = await window.trafficPredictor(context);
+          const features = embeddings.data || embeddings;
+
+          // Use AI insights for routing decisions
+          let aiInfluence = 0;
+          for (let i = 0; i < Math.min(4, features.length); i++) {
+            aiInfluence += features[i];
+          }
+          aiInfluence = aiInfluence / Math.min(4, features.length);
+
+          // AI-influenced decision making
+          const shouldChangeRoute =
+            Math.abs(aiInfluence) > 0.3 && trafficConditions.congestion > 2;
+          const shouldSpeed = aiInfluence > 0.2 && vehicle.patience > 70;
+          const shouldWait = aiInfluence < -0.2 || vehicle.patience < 30;
+
+          return {
+            changeRoute: shouldChangeRoute,
+            speedUp: shouldSpeed,
+            wait: shouldWait,
+            aiConfidence: Math.abs(aiInfluence),
+            decision:
+              aiInfluence > 0.3
+                ? "aggressive"
+                : aiInfluence < -0.3
+                ? "cautious"
+                : "normal",
+          };
+        } catch (error) {
+          console.warn("AI routing decision failed:", error);
+          return makeBasicRoutingDecision(vehicle, trafficConditions);
+        }
+      }
+
+      // Fallback routing decision without AI
+      function makeBasicRoutingDecision(vehicle, trafficConditions) {
+        const shouldChangeRoute =
+          trafficConditions.congestion > 3 && Math.random() < 0.2;
+        const shouldSpeed = vehicle.patience > 60 && Math.random() < 0.3;
+        const shouldWait =
+          trafficConditions.lightState === "red" && Math.random() < 0.7;
+
+        return {
+          changeRoute: shouldChangeRoute,
+          speedUp: shouldSpeed,
+          wait: shouldWait,
+          aiConfidence: 0.3,
+          decision: vehicle.aggressiveness > 0.6 ? "aggressive" : "normal",
+        };
+      }
+
+      // Load both GeoJSON and graph data
+      loadTrafficData();
 
       // Calculate traffic density around intersection
       function calculateTrafficDensity(position) {
@@ -1412,150 +1991,345 @@
         );
       }
 
-      // Realistic Traffic System - Fast and Natural Movement
-      function updateVehicleAgents() {
+      // Simple fallback vehicle movement
+      function updateVehicleAgentsBasic() {
         if (vehicles.length === 0) return;
 
-        var now = Date.now();
+        const batchSize = Math.min(50, Math.ceil(vehicles.length / 3));
+        const startIndex = (updateCounter * batchSize) % vehicles.length;
+        const endIndex = Math.min(startIndex + batchSize, vehicles.length);
+        const updates = [];
 
-        // Update more vehicles per frame for realistic traffic flow
-        var batchSize = Math.min(50, Math.ceil(vehicles.length / 3)); // Larger batches
-        var startIndex = (updateCounter * batchSize) % vehicles.length;
-        var endIndex = Math.min(startIndex + batchSize, vehicles.length);
-
-        var updates = [];
-
-        for (var i = startIndex; i < endIndex; i++) {
-          var vehicle = vehicles[i];
-
-          // Update all vehicles more frequently (only skip 20%)
+        for (let i = startIndex; i < endIndex; i++) {
+          const vehicle = vehicles[i];
           if (Math.random() < 0.2) continue;
 
-          var currentPos = vehicle.marker.getLatLng();
-          var deltaTime = now - vehicle.lastUpdate;
-          vehicle.lastUpdate = now;
+          const roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
+          let speedMultiplier = 1.0;
 
-          // Realistic Indian traffic behavior
-          var nearbyLight = null;
-          if (updateCounter % 5 === 0) {
-            // Check lights more frequently
-            nearbyLight = findNearestTrafficLight(currentPos);
-          }
-
-          // Get road congestion data for this vehicle
-          var roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
-
-          // Calculate realistic speed with Indian traffic characteristics and congestion
-          var baseSpeed = vehicle.baseSpeed * speed; // Use base speed for calculations
-          var speedMultiplier = 1.0;
-
-          // Road congestion-based speed adjustment (primary factor)
           switch (roadCongestion.level) {
-            case 4: // Severe congestion (dark red roads)
-              speedMultiplier *= 0.1; // Nearly stopped
+            case 4:
+              speedMultiplier *= 0.1;
               break;
-            case 3: // Heavy congestion (red roads)
-              speedMultiplier *= 0.3; // Very slow
+            case 3:
+              speedMultiplier *= 0.3;
               break;
-            case 2: // Moderate congestion (orange roads)
-              speedMultiplier *= 0.6; // Reduced speed
+            case 2:
+              speedMultiplier *= 0.6;
               break;
-            case 1: // Light congestion (yellow roads)
-              speedMultiplier *= 0.8; // Slightly reduced
+            case 1:
+              speedMultiplier *= 0.8;
               break;
-            default: // Free flow (green roads)
-              speedMultiplier *= 1.5; // Faster on free roads
+            default:
+              speedMultiplier *= 1.5;
+              break;
           }
 
-          // Traffic light behavior (less strict, more realistic)
-          if (nearbyLight && nearbyLight.distance < 0.008) {
-            if (nearbyLight.light.state === "red") {
-              // Only 60% actually stop, others slow down or ignore
-              if (Math.random() < 0.6) {
-                speedMultiplier *= 0.1; // Slow down significantly
-              } else {
-                speedMultiplier *= 0.7; // Some ignore red lights (realistic for India)
-              }
-            } else if (nearbyLight.light.state === "yellow") {
-              // Most speed up to beat the light (but limited by congestion)
-              if (roadCongestion.level < 2) {
-                // Only if road isn't too congested
-                speedMultiplier *= Math.random() < 0.8 ? 1.4 : 0.3;
-              }
-            } else {
-              // Speed up on green (but limited by congestion)
-              if (roadCongestion.level === 0) {
-                speedMultiplier *= 1.3; // Extra boost on free roads
-              }
-            }
-          }
-
-          // Lane changing and overtaking behavior (more frequent in congestion)
-          var laneChangeChance = roadCongestion.level > 1 ? 0.15 : 0.05; // More lane changes in congestion
-          if (Math.random() < laneChangeChance) {
-            vehicle.lane = vehicle.lane === "left" ? "right" : "left";
-          }
-
-          // Aggressive driving patterns (realistic for Indian traffic)
-          if (vehicle.type === "bike" || vehicle.type === "motorcycle") {
-            speedMultiplier *= 1.4; // Bikes are faster and more aggressive
-            // Bikes can weave through congestion better
-            if (roadCongestion.level > 2) {
-              speedMultiplier *= 1.8; // Bikes find gaps in heavy traffic
-            }
-          } else if (vehicle.type === "bus" || vehicle.type === "truck") {
-            speedMultiplier *= 0.8; // Heavy vehicles slower
-          }
-
-          // Random speed variations for natural movement (reduced in congestion)
-          var randomVariation = roadCongestion.level > 2 ? 0.3 : 0.6;
-          speedMultiplier *= 0.8 + Math.random() * randomVariation;
-
-          // Apply aggressiveness factor (more important in congestion)
-          var aggressivenessBoost = roadCongestion.level > 1 ? 1.2 : 1.0;
-          speedMultiplier *= vehicle.aggressiveness * aggressivenessBoost;
-
-          var finalSpeed = baseSpeed * speedMultiplier;
-
-          // Move vehicle
+          const finalSpeed = vehicle.baseSpeed * speed * speedMultiplier;
           vehicle.pos += finalSpeed;
-          if (vehicle.pos > 1) {
-            vehicle.pos = 0; // Loop back to start
 
-            // Occasionally change vehicle type when looping (new vehicle enters)
-            if (Math.random() < 0.1) {
-              var newTypes = [
-                { color: "#ff6b6b", size: 4, speed: 0.015 },
-                { color: "#4ecdc4", size: 3, speed: 0.025 },
-                { color: "#45b7d1", size: 6, speed: 0.012 },
-                { color: "#f9ca24", size: 3, speed: 0.018 },
-                { color: "#6c5ce7", size: 5, speed: 0.013 },
-                { color: "#a0e7e5", size: 2, speed: 0.022 },
-              ];
-              var newType =
-                newTypes[Math.floor(Math.random() * newTypes.length)];
-              vehicle.marker.setStyle({
-                fillColor: newType.color,
-                radius: newType.size,
-              });
-              vehicle.speed = newType.speed * (0.7 + Math.random() * 0.6);
-            }
+          if (vehicle.pos > 1) {
+            vehicle.pos = 0;
           }
 
-          var newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
+          const newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
           if (newPoint) {
-            // Add slight lane offset for more realistic positioning
-            var laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
+            const laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
             newPoint[1] += laneOffset;
-
             updates.push({ vehicle: vehicle, point: newPoint });
           }
         }
 
-        // Apply all updates at once for smooth animation
-        updates.forEach(function (update) {
+        updates.forEach((update) => {
           update.vehicle.marker.setLatLng(update.point);
         });
+      }
+
+      // Enhanced Realistic Vehicle Movement System with AI and Pathfinding
+      async function updateVehicleAgents() {
+        if (vehicles.length === 0) return;
+
+        // Use basic movement if realistic movement is disabled
+        if (!useRealisticMovement) {
+          updateVehicleAgentsBasic();
+          return;
+        }
+
+        const now = Date.now();
+        const batchSize = performanceMode
+          ? Math.min(15, Math.ceil(vehicles.length / 6)) // Smaller batches in performance mode
+          : Math.min(30, Math.ceil(vehicles.length / 4)); // Normal batches
+        const startIndex = (updateCounter * batchSize) % vehicles.length;
+        const endIndex = Math.min(startIndex + batchSize, vehicles.length);
+        const updates = [];
+
+        for (let i = startIndex; i < endIndex; i++) {
+          const vehicle = vehicles[i];
+
+          // Skip some updates for performance (20% skip rate)
+          if (Math.random() < 0.2) continue;
+
+          const currentPos = vehicle.marker.getLatLng();
+          const currentPosArray = [currentPos.lat, currentPos.lng];
+
+          // Update vehicle state
+          vehicle.lastUpdate = now;
+
+          // Check if vehicle has reached its destination
+          if (!vehicle.hasReachedDestination && vehicle.destination) {
+            const distanceToDestination = calculateDistance(
+              currentPosArray,
+              vehicle.destination
+            );
+            if (distanceToDestination < 0.001) {
+              // Within 100m of destination
+              vehicle.hasReachedDestination = true;
+              vehicle.stoppedTime = now;
+              // Generate new destination after a brief stop
+              setTimeout(() => {
+                vehicle.destination =
+                  generateRandomDestination(currentPosArray);
+                vehicle.route = findRoute(currentPosArray, vehicle.destination);
+                vehicle.hasReachedDestination = false;
+                vehicle.currentRouteIndex = 0;
+              }, 2000 + Math.random() * 5000); // Stop for 2-7 seconds
+            }
+          }
+
+          // Skip movement if stopped at destination
+          if (vehicle.hasReachedDestination) {
+            continue;
+          }
+
+          // Get traffic conditions for AI decision making
+          const nearbyLight = findNearestTrafficLight(currentPos);
+          const roadCongestion = getRoadCongestionLevel(vehicle.roadIndex);
+
+          const trafficConditions = {
+            congestion: roadCongestion.level,
+            lightState:
+              nearbyLight && nearbyLight.distance < 0.008
+                ? nearbyLight.light.state
+                : "none",
+            density: roadCongestion.density || 0,
+          };
+
+          // AI-enhanced decision making
+          let aiDecision = {
+            decision: "normal",
+            speedUp: false,
+            wait: false,
+            changeRoute: false,
+          };
+          const aiFrequency = performanceMode ? 20 : 10; // Less frequent AI in performance mode
+          if (updateCounter % aiFrequency === 0) {
+            // Make AI decisions less frequently for performance
+            aiDecision = await makeAIRoutingDecision(
+              vehicle,
+              currentPosArray,
+              trafficConditions
+            );
+          }
+
+          // Calculate movement speed based on multiple factors
+          let speedMultiplier = 1.0;
+          let baseSpeed = vehicle.baseSpeed * speed;
+
+          // Road congestion impact (primary factor)
+          switch (roadCongestion.level) {
+            case 4:
+              speedMultiplier *= 0.05;
+              break; // Severe congestion - nearly stopped
+            case 3:
+              speedMultiplier *= 0.2;
+              break; // Heavy congestion
+            case 2:
+              speedMultiplier *= 0.5;
+              break; // Moderate congestion
+            case 1:
+              speedMultiplier *= 0.75;
+              break; // Light congestion
+            default:
+              speedMultiplier *= 1.3;
+              break; // Free flow
+          }
+
+          // Traffic light behavior with realistic compliance
+          if (nearbyLight && nearbyLight.distance < 0.008) {
+            vehicle.isAtIntersection = true;
+
+            if (nearbyLight.light.state === "red") {
+              const compliance = vehicle.routeKnowledge === "good" ? 0.8 : 0.6;
+              if (Math.random() < compliance || vehicle.patience < 30) {
+                speedMultiplier *= 0.1; // Stop or slow significantly
+                vehicle.waitingAtLight = true;
+                vehicle.stoppedTime += 100; // Increase frustration
+              } else {
+                speedMultiplier *= 0.6; // Some run red lights
+              }
+            } else if (nearbyLight.light.state === "yellow") {
+              if (vehicle.drivingStyle.aggression > 0.6) {
+                speedMultiplier *= 1.4; // Aggressive drivers speed up
+              } else {
+                speedMultiplier *= 0.4; // Cautious drivers slow down
+              }
+            } else {
+              speedMultiplier *= 1.2; // Speed up on green
+              vehicle.waitingAtLight = false;
+            }
+          } else {
+            vehicle.isAtIntersection = false;
+            vehicle.waitingAtLight = false;
+          }
+
+          // Vehicle type specific behavior
+          const typeMultiplier = {
+            bike: 1.5,
+            motorcycle: 1.6,
+            scooter: 1.4,
+            car: 1.0,
+            taxi: 1.1,
+            auto: 1.2,
+            bus: 0.7,
+            truck: 0.6,
+          };
+          speedMultiplier *= typeMultiplier[vehicle.type] || 1.0;
+
+          // Two-wheeler advantage in congestion (can weave through traffic)
+          if (
+            (vehicle.type === "bike" ||
+              vehicle.type === "motorcycle" ||
+              vehicle.type === "scooter") &&
+            roadCongestion.level > 2
+          ) {
+            speedMultiplier *= 2.0; // Two-wheelers navigate congestion better
+          }
+
+          // AI decision influence
+          if (aiDecision.speedUp && roadCongestion.level < 3) {
+            speedMultiplier *= 1.3;
+          } else if (aiDecision.wait) {
+            speedMultiplier *= 0.3;
+          }
+
+          // Driving style influence
+          speedMultiplier *=
+            0.7 + vehicle.drivingStyle.speedVariance * Math.random();
+          speedMultiplier *= 0.8 + vehicle.aggressiveness * 0.4;
+
+          // Patience factor (frustrated drivers are more aggressive)
+          if (vehicle.stoppedTime > 5000) {
+            // Stopped for more than 5 seconds
+            speedMultiplier *= 1 + vehicle.aggressiveness * 0.5;
+            vehicle.patience = Math.max(0, vehicle.patience - 1);
+          } else {
+            vehicle.patience = Math.min(100, vehicle.patience + 0.1);
+          }
+
+          // Lane changing behavior
+          if (Math.random() < vehicle.drivingStyle.laneChangeFreq) {
+            vehicle.lane = vehicle.lane === "left" ? "right" : "left";
+          }
+
+          // Apply final speed
+          const finalSpeed = baseSpeed * speedMultiplier;
+
+          // Enhanced movement with route following
+          if (
+            vehicle.route &&
+            vehicle.route.length > 1 &&
+            !vehicle.hasReachedDestination
+          ) {
+            // Follow the planned route
+            updateVehicleAlongRoute(vehicle, finalSpeed, updates);
+          } else {
+            // Fallback to simple path following
+            vehicle.pos += finalSpeed;
+            if (vehicle.pos > 1) {
+              vehicle.pos = 0;
+              // Generate new route when looping
+              vehicle.destination = generateRandomDestination(currentPosArray);
+              vehicle.route = findRoute(currentPosArray, vehicle.destination);
+              vehicle.currentRouteIndex = 0;
+            }
+
+            const newPoint = getPointAlongLine(vehicle.path, vehicle.pos);
+            if (newPoint) {
+              const laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
+              newPoint[1] += laneOffset;
+              updates.push({ vehicle: vehicle, point: newPoint });
+            }
+          }
+        }
+
+        // Apply all position updates
+        updates.forEach((update) => {
+          update.vehicle.marker.setLatLng(update.point);
+        });
+      }
+
+      // Update vehicle movement along planned route
+      function updateVehicleAlongRoute(vehicle, speed, updates) {
+        if (!vehicle.route || vehicle.route.length < 2) return;
+
+        vehicle.routeProgress += speed;
+
+        // Check if we've completed current route segment
+        if (vehicle.routeProgress >= 1.0) {
+          vehicle.currentRouteIndex++;
+          vehicle.routeProgress = 0;
+
+          // Check if we've reached the end of the route
+          if (vehicle.currentRouteIndex >= vehicle.route.length - 1) {
+            vehicle.hasReachedDestination = true;
+            return;
+          }
+
+          // Update to next road segment
+          const currentNode = vehicle.route[vehicle.currentRouteIndex];
+          const nextNode = vehicle.route[vehicle.currentRouteIndex + 1];
+
+          if (currentNode && nextNode) {
+            // Find the road segment between these nodes
+            const roadSegment = findRoadSegmentBetweenNodes(
+              currentNode,
+              nextNode
+            );
+            if (roadSegment) {
+              vehicle.currentRoadSegment = roadSegment;
+            }
+          }
+        }
+
+        // Calculate position along current road segment
+        const newPoint = getPointAlongLine(
+          vehicle.currentRoadSegment,
+          vehicle.routeProgress
+        );
+        if (newPoint) {
+          const laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
+          newPoint[1] += laneOffset;
+          updates.push({ vehicle: vehicle, point: newPoint });
+        }
+      }
+
+      // Find road segment between two graph nodes
+      function findRoadSegmentBetweenNodes(nodeA, nodeB) {
+        // Look for connection data between nodes
+        const nodeAConnections = roadGraph[nodeA.id] || [];
+        const connection = nodeAConnections.find(
+          (conn) =>
+            conn.node[0] === nodeB.position[1] &&
+            conn.node[1] === nodeB.position[0]
+        );
+
+        if (connection) {
+          // Create road segment from connection data
+          return [nodeA.position, nodeB.position];
+        }
+
+        // Fallback: direct line between nodes
+        return [nodeA.position, nodeB.position];
       }
 
       function calculateAISpeed(nearbyLight, congestion, vehicle) {
@@ -1672,7 +2446,7 @@
       var lastPerformanceCheck = Date.now();
       var fps = 0;
       var performanceWarnings = 0;
-      var maxVehicles = 2000; // Increased limit for realistic traffic density
+      var maxVehicles = 500; // Optimized limit for better performance
       var predictionCount = 0;
       var lastAIConfidence = 0.5;
 
@@ -1970,6 +2744,72 @@
       document.getElementById("trainNN").addEventListener("click", function () {
         trainNeuralNetwork();
       });
+
+      document
+        .getElementById("toggleRealistic")
+        .addEventListener("click", function () {
+          useRealisticMovement = !useRealisticMovement;
+          const button = document.getElementById("toggleRealistic");
+          if (useRealisticMovement) {
+            button.textContent = "🚗 Enhanced AI Movement (ON)";
+            button.style.backgroundColor = "#4CAF50";
+            updateLog(
+              "✅ Enhanced AI vehicle movement activated - vehicles now use pathfinding and realistic behavior"
+            );
+          } else {
+            button.textContent = "🚗 Basic Movement (OFF)";
+            button.style.backgroundColor = "#f44336";
+            updateLog(
+              "⚠️ Switched to basic vehicle movement - simple path following"
+            );
+          }
+        });
+
+      document
+        .getElementById("performanceMode")
+        .addEventListener("click", function () {
+          performanceMode = !performanceMode;
+          const button = document.getElementById("performanceMode");
+          if (performanceMode) {
+            button.textContent = "⚡ Performance Mode (ON)";
+            button.style.backgroundColor = "#28a745";
+            maxVehicles = 200; // Reduce max vehicles
+            // Remove excess vehicles if needed
+            while (vehicles.length > maxVehicles) {
+              const vehicle = vehicles.pop();
+              if (vehicle && vehicle.marker) {
+                vehiclesLayer.removeLayer(vehicle.marker);
+              }
+            }
+            updateLog(
+              "⚡ Performance mode activated - reduced vehicles and optimized rendering"
+            );
+          } else {
+            button.textContent = "⚡ Performance Mode (OFF)";
+            button.style.backgroundColor = "#6c757d";
+            maxVehicles = 500; // Restore normal limit
+            updateLog(
+              "🔄 Performance mode deactivated - normal rendering restored"
+            );
+          }
+        });
+
+      document
+        .getElementById("loadRealData")
+        .addEventListener("click", function () {
+          const button = document.getElementById("loadRealData");
+          button.disabled = true;
+          button.textContent = "📂 Loading...";
+
+          updateLog("🔄 Manual GeoJSON loading requested...");
+          loadGeoJSONWithTimeout("bhubaneswar_traffic_flow.geojson");
+
+          // Re-enable button after timeout
+          setTimeout(() => {
+            button.disabled = false;
+            button.textContent = "📂 Load Real GeoJSON";
+          }, 15000);
+        });
 
       // Initialize Neural Network on page load
       window.addEventListener("load", function () {
