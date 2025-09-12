@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Simulation - Bhubaneswar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map { height: 600px; width: 100%; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { text-align: center; }
+        #controls { text-align: center; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Traffic Simulation System for Bhubaneswar</h1>
+    <div id="map"></div>
+    <div id="controls">
+        <label>Simulation Speed: <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1"></label>
+        <button id="play">Play</button>
+        <button id="pause">Pause</button>
+        <button id="reset">Reset</button>
+    </div>
+    <div id="log">Simulation Log:</div>
+    <script>
+        var map = L.map('map').setView([20.272, 85.824], 13); // Bhubaneswar center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        var roadsLayer = L.layerGroup().addTo(map);
+        var intersectionsLayer = L.layerGroup().addTo(map);
+        var vehiclesLayer = L.layerGroup().addTo(map);
+
+        var allRoads = [];
+        var allIntersections = [];
+        var trafficLights = {};
+        var vehicles = [];
+        var simulationInterval;
+        var isPlaying = false;
+        var speed = 1;
+
+        // Load GeoJSON
+        fetch('bhubaneswar_traffic_flow.geojson')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Filter and process features
+                data.features.forEach(feature => {
+                    if (feature.geometry.type === 'LineString' && feature.properties.highway && feature.properties.road_id) {
+                        // Road
+                        var coords = feature.geometry.coordinates.map(c => [c[1], c[0]]);
+                        var road = L.polyline(coords, { color: 'gray', weight: 3 });
+                        roadsLayer.addLayer(road);
+                        allRoads.push({
+                            geometry: coords,
+                            properties: feature.properties,
+                            layer: road
+                        });
+
+                        // Add vehicles
+                        var vehicleCount = feature.properties.vehicle_count || 0;
+                        for (var i = 0; i < Math.min(vehicleCount, 5); i++) {
+                            var pos = (i + 0.5) / vehicleCount;
+                            var point = getPointAlongLine(coords, pos);
+                            if (point) {
+                                var marker = L.circleMarker(point, { color: 'blue', radius: 5 });
+                                vehiclesLayer.addLayer(marker);
+                                vehicles.push({
+                                    marker: marker,
+                                    path: coords,
+                                    pos: pos,
+                                    speed: 0.001 // fraction per second
+                                });
+                            }
+                        }
+                    } else if (feature.geometry.type === 'Point' && feature.properties.traffic_signals) {
+                        // Traffic light intersection
+                        var coords = [feature.geometry.coordinates[1], feature.geometry.coordinates[0]];
+                        var light = L.circleMarker(coords, { color: 'green', radius: 5 });
+                        intersectionsLayer.addLayer(light);
+                        trafficLights[coords.join(',')] = {
+                            marker: light,
+                            state: 'green',
+                            timer: 30,
+                            position: coords
+                        };
+                        allIntersections.push(coords);
+                    }
+                });
+
+                updateLog(`Loaded ${allRoads.length} roads, ${Object.keys(trafficLights).length} traffic lights, ${vehicles.length} vehicles`);
+            })
+            .catch(error => {
+                console.error('Error loading GeoJSON:', error);

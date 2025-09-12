@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Simulation - Bhubaneswar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <style>
+        #map { height: 600px; width: 100%; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { text-align: center; }
+        #controls { text-align: center; margin: 10px; }
+        #neural-status { background: #f0f0f0; padding: 10px; margin: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>AI Traffic Simulation System for Bhubaneswar</h1>
+    <div id="map"></div>
+    <div id="controls">
+        <input type="file" id="geojsonInput" accept=".geojson"><label>Upload GeoJSON File</label><br>
+        <label>Simulation Speed: <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1"></label>
+        <button id="play">Play</button>
+        <button id="pause">Pause</button>
+        <button id="reset">Reset</button>
+        <button id="trainNN">Train Neural Network</button>
+    </div>
+    <div id="neural-status">Neural Network Status: Initializing...</div>
+    <div id="log">Simulation Log:</div>
+    <script>
+        var map = L.map('map').setView([20.272, 85.824], 13); // Bhubaneswar center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        var roadsLayer = L.layerGroup().addTo(map);
+        var intersectionsLayer = L.layerGroup().addTo(map);
+        var vehiclesLayer = L.layerGroup().addTo(map);
+
+        var allRoads = [];
+        var allIntersections = [];
+        var trafficLights = {};
+        var vehicles = [];
+        var simulationInterval;
+        var isPlaying = false;
+        var speed = 1;
+
+        // Neural Network for Traffic Management
+        var neuralNetwork = null;
+        var trafficData = [];
+        var isTraining = false;
+
+        // Initialize Neural Network
+        async function initNeuralNetwork() {
+            try {
+                // Create a simple neural network for traffic optimization
+                neuralNetwork = tf.sequential({
+                    layers: [
+                        tf.layers.dense({inputShape: [6], units: 16, activation: 'relu'}),
+                        tf.layers.dropout({rate: 0.2}),
+                        tf.layers.dense({units: 8, activation: 'relu'}),
+                        tf.layers.dense({units: 4, activation: 'sigmoid'}) // Output: [green_time, sync_offset, priority, flow_rate]
+                    ]
+                });
+
+                neuralNetwork.compile({
+                    optimizer: tf.train.adam(0.001),
+                    loss: 'meanSquaredError',
+                    metrics: ['mae']
+                });
+
+                document.getElementById('neural-status').textContent = 'Neural Network Status: Ready';
+                console.log('Neural network initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize neural network:', error);
+                document.getElementById('neural-status').textContent = 'Neural Network Status: Error - ' + error.message;
+            }
+        }
+
+        // Traffic Light Synchronization System
+        var syncGroups = {};
+        var globalPhaseOffset = 0;
+
+        function createSyncGroups() {
+            // Group nearby traffic lights for synchronization
+            var lightPositions = Object.keys(trafficLights).map(key => ({
+                key: key,
+                pos: trafficLights[key].position,
+                light: trafficLights[key]
+            }));
+
+            var groupId = 0;
+            lightPositions.forEach((light1, i) => {
+                if (!light1.light.syncGroup) {
+                    var group = [light1];
+                    light1.light.syncGroup = groupId;
+                    
+                    // Find nearby lights within 0.01 degrees
+                    lightPositions.forEach((light2, j) => {
+                        if (i !== j && !light2.light.syncGroup) {
+                            var distance = Math.sqrt(
+                                Math.pow(light1.pos[0] - light2.pos[0], 2) + 
+                                Math.pow(light1.pos[1] - light2.pos[1], 2)
+                            );
+                            
+                            if (distance < 0.01) { // Within sync range
+                                group.push(light2);
+                                light2.light.syncGroup = groupId;
+                            }
+                        }
+                    });
+                    
+                    syncGroups[groupId] = group;
+                    groupId++;
+                }
+            });
+        }
+
+        function synchronizeTrafficLights() {
+            globalPhaseOffset += 0.1 * speed;
+            
+            Object.values(syncGroups).forEach((group, groupIndex) => {
+                var groupPhase = (globalPhaseOffset + groupIndex * 20) % 80; // 80 second cycle
+                
+                group.forEach((lightObj, index) => {
+                    var light = lightObj.light;
+                    var phaseDelay = index * 5; // 5 second delay between lights in group
+                    var lightPhase = (groupPhase + phaseDelay) % 80;
+                    
+                    // Update light state based on synchronized phase
+                    var newState;
+                    var newIcon;
+                    
+                    if (lightPhase < 30) {
+                        newState = 'green';
+                        newIcon = L.divIcon({
+                            html: '🟢',
+                            className: 'traffic-light-icon',
+                            iconSize: [25, 25],
+                            iconAnchor: [12, 12]
+                        });
+                    } else if (lightPhase < 35) {
+                        newState = 'yellow';
+                        newIcon = L.divIcon({
+                            html: '🟡',
+                            className: 'traffic-light-icon',
+                            iconSize: [25, 25],
+                            iconAnchor: [12, 12]
+                        });
+                    } else {
+                        newState = 'red';
+                        newIcon = L.divIcon({
+                            html: '🔴',
+                            className: 'traffic-light-icon',
+                            iconSize: [25, 25],
+                            iconAnchor: [12, 12]
+                        });
+                    }
+                    
+                    if (light.state !== newState) {
+                        light.state = newState;
+                        light.marker.setIcon(newIcon);
+                    }
+                });
+            });
+        }
+
+        // Neural Network Prediction for Traffic Optimization
+        async function predictOptimalTiming(density, congestion, avgSpeed, timeOfDay, weatherFactor, historicalFlow) {
+            if (!neuralNetwork) return { green: 30, sync: 0, priority: 0.5, flow: 1.0 };
+            
+            try {
+                const input = tf.tensor2d([[density / 10, congestion / 5, avgSpeed / 50, timeOfDay / 24, weatherFactor, historicalFlow / 100]]);
+                const prediction = neuralNetwork.predict(input);
+                const result = await prediction.data();
+                
+                input.dispose();
+                prediction.dispose();
+                
+                return {
+                    green: Math.max(15, Math.min(60, result[0] * 60)), // 15-60 seconds
+                    sync: result[1] * 10, // 0-10 second offset
+                    priority: result[2], // 0-1 priority factor
+                    flow: result[3] // 0-1 flow efficiency
+                };
+            } catch (error) {
+                console.error('Neural network prediction error:', error);
+                return { green: 30, sync: 0, priority: 0.5, flow: 1.0 };
+            }
+        }
+
+        // Collect training data
+        function collectTrafficData() {
+            if (trafficData.length > 1000) trafficData.shift(); // Keep last 1000 records
+            
+            var avgDensity = Object.values(trafficLights).reduce((sum, light) => {
+                return sum + calculateTrafficDensity(light.position);
+            }, 0) / Object.keys(trafficLights).length;
+            
+            var avgCongestion = vehicles.reduce((sum, v) => sum + analyzeRoadCongestion(v.path), 0) / vehicles.length || 0;
+            var avgSpeed = vehicles.reduce((sum, v) => sum + v.speed * 1000, 0) / vehicles.length || 20;
+            var timeOfDay = new Date().getHours();
+            var weatherFactor = 1.0; // Could be dynamic based on weather API
+            var historicalFlow = vehicles.length;
+            
+            // Calculate efficiency (lower wait times = higher efficiency)
+            var efficiency = Math.max(0, 1 - (avgDensity / 10));
+            
+            trafficData.push({
+                input: [avgDensity / 10, avgCongestion / 5, avgSpeed / 50, timeOfDay / 24, weatherFactor, historicalFlow / 100],
+                output: [efficiency, 0.5, 0.7, 0.8] // Target optimal values
+            });
+        }
+
+        // Train Neural Network
+        async function trainNeuralNetwork() {
+            if (!neuralNetwork || trafficData.length < 50) {
+                document.getElementById('neural-status').textContent = 'Need more data (50+ samples) to train';
+                return;
+            }
+            
+            isTraining = true;
+            document.getElementById('neural-status').textContent = 'Training Neural Network...';
+            
+            try {
+                const inputs = tf.tensor2d(trafficData.map(d => d.input));
+                const outputs = tf.tensor2d(trafficData.map(d => d.output));
+                
+                await neuralNetwork.fit(inputs, outputs, {
+                    epochs: 50,
+                    batchSize: 10,
+                    validationSplit: 0.2,
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                            if (epoch % 10 === 0) {
+                                document.getElementById('neural-status').textContent = 
+                                    `Training: Epoch ${epoch}, Loss: ${logs.loss.toFixed(4)}`;
+                            }
+                        }
+                    }
+                });
+                
+                inputs.dispose();
+                outputs.dispose();
+                
+                document.getElementById('neural-status').textContent = 'Neural Network: Trained Successfully';
+            } catch (error) {
+                console.error('Training error:', error);
+        // AI Speed Calculation
+        function calculateAISpeed(nearbyLight, congestion, vehicle) {
+            var baseSpeed = 0.002;
+            var speedFactor = 1.0;
+            
+            // Traffic light awareness
+            if (nearbyLight && nearbyLight.distance < 0.005) { // Close to traffic light
+                if (nearbyLight.light.state === 'red') {
+                    speedFactor = 0.1; // Almost stop at red light
+                } else if (nearbyLight.light.state === 'yellow') {
+                    speedFactor = 0.3; // Slow down for yellow
+                }
+            }
+            
+            // Congestion awareness
+            if (congestion > 2) {
+                speedFactor *= 0.5; // Slow down in heavy traffic
+            } else if (congestion > 1) {
+                speedFactor *= 0.7; // Moderate slowdown
+            }
+            
+            // Random variation for realistic behavior
+            speedFactor *= (0.8 + Math.random() * 0.4); // ±20% variation
+            
+            return baseSpeed * speedFactor;
+        }
+        
+        // Find nearest traffic light to vehicle
+        function findNearestTrafficLight(position) {
+            var nearest = null;
+            var minDistance = Infinity;
+            
+            Object.values(trafficLights).forEach(light => {
+                var distance = Math.sqrt(
+                    Math.pow(position.lat - light.position[0], 2) + 
+                    Math.pow(position.lng - light.position[1], 2)
+                );
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = { light: light, distance: distance };
+                }
+            });
+            
+            return nearest;
+        }
+        
+        // Analyze congestion on current road
+        function analyzeRoadCongestion(path) {
+            var congestion = 0;
+            var pathRadius = 0.001;
+            
+            vehicles.forEach(otherVehicle => {
+                var otherPos = otherVehicle.marker.getLatLng();
+                // Check if other vehicle is on same road path
+                for (var i = 0; i < path.length - 1; i++) {
+                    var segmentDistance = distanceToLineSegment(
+                        [otherPos.lat, otherPos.lng], 
+                        path[i], 
+                        path[i + 1]
+                    );
+                    if (segmentDistance < pathRadius) {
+                        congestion++;
+                        break;
+                    }
+                }
+            });
+            
+            return congestion;
+        }
+        
+        // Distance from point to line segment
+        function distanceToLineSegment(point, lineStart, lineEnd) {
+            var A = point[0] - lineStart[0];
+            var B = point[1] - lineStart[1];
+            var C = lineEnd[0] - lineStart[0];
+            var D = lineEnd[1] - lineStart[1];
+            
+            var dot = A * C + B * D;
+            var lenSq = C * C + D * D;
+            
+            if (lenSq === 0) return Math.sqrt(A * A + B * B);
+            
+            var param = dot / lenSq;
+            var xx, yy;
+            
+            if (param < 0) {
+                xx = lineStart[0];
+                yy = lineStart[1];
+            } else if (param > 1) {
+                xx = lineEnd[0];
+                yy = lineEnd[1];
+            } else {
+                xx = lineStart[0] + param * C;
+                yy = lineStart[1] + param * D;
+            }
+            
+            var dx = point[0] - xx;
+            var dy = point[1] - yy;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        
+        // AI Route Selection (simplified)
+        function selectOptimalRoute(currentPath) {
+            // For now, return current path but this could be enhanced
+            // with actual pathfinding algorithms like A* or Dijkstra
+            return currentPath;
+        }
+        
+        // Main simulation update with AI
+        function updateSimulation() {
+            if (!isPlaying) return;
+
+            // AI Traffic Light Management
+            updateTrafficLights();
+            
+            // AI Vehicle Agent Updates
+            updateVehicleAgents();
+
+            // Update traffic statistics
+            var avgDensity = Object.values(trafficLights).reduce((sum, light) => {
+                return sum + calculateTrafficDensity(light.position);
+            }, 0) / Object.keys(trafficLights).length;
+
+            // Enhanced logging with AI insights
+            if (Math.random() < 0.05) {
+                updateLog(`AI Traffic Control: Avg density: ${avgDensity.toFixed(1)}, Active vehicles: ${vehicles.length}, Lights: ${Object.keys(trafficLights).length}`);
+            }
+        }
+
+        // Helper functions
+        function getPointAlongLine(path, fraction) {
+            if (!path || path.length < 2) return null;
+            fraction = Math.max(0, Math.min(1, fraction));
+            if (fraction === 0) return path[0];
+            if (fraction === 1) return path[path.length - 1];
+
+            var totalLength = calculatePathLength(path);
+            var targetLength = totalLength * fraction;
+            var cumulativeLength = 0;
+
+            for (var i = 1; i < path.length; i++) {
+                var segmentLength = dist(path[i-1], path[i]);
+                if (cumulativeLength + segmentLength >= targetLength) {
+                    var ratio = (targetLength - cumulativeLength) / segmentLength;
+                    return [
+                        path[i-1][0] + ratio * (path[i][0] - path[i-1][0]),
+                        path[i-1][1] + ratio * (path[i][1] - path[i-1][1])
+                    ];
+                }
+                cumulativeLength += segmentLength;
+            }
+            return path[path.length - 1];
+        }
+
+        function calculatePathLength(path) {
+            var length = 0;
+            for (var i = 1; i < path.length; i++) {
+                length += dist(path[i-1], path[i]);
+            }
+            return length;
+        }
+
+        function dist(p1, p2) {
+            return Math.sqrt(Math.pow(p1[0] - p2[0], 2) + Math.pow(p1[1] - p2[1], 2));
+        }
+
+        function updateLog(message) {
+            document.getElementById('log').innerText = message;
+        }
+
+        // Event listeners
+        document.getElementById('speed').addEventListener('input', function(e) {
+            speed = parseFloat(e.target.value);
+        });
+
+        document.getElementById('geojsonInput').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) {
+                loadGeoJSON(file);
+            }
+        });
+
+        document.getElementById('play').addEventListener('click', function() {
+            if (!isPlaying) {
+                isPlaying = true;
+                simulationInterval = setInterval(updateSimulation, 100); // Update every 100ms
+            }
+        });
+
+        document.getElementById('pause').addEventListener('click', function() {
+            isPlaying = false;
+            clearInterval(simulationInterval);
+        });
+
+        document.getElementById('reset').addEventListener('click', function() {
+            if (simulationInterval) clearInterval(simulationInterval);
+            isPlaying = false;
+            // Reset vehicles and lights
+            vehicles.forEach(v => v.pos = Math.random());
+            Object.values(trafficLights).forEach(l => {
+                l.state = 'green';
+                var greenIcon = L.divIcon({
+                    html: '🟢',
+                    className: 'traffic-light-icon',
+                    iconSize: [25, 25],
+                    iconAnchor: [12, 12]
+                });
+                l.marker.setIcon(greenIcon);
+                l.timer = 30;
+            });
+            updateLog('Simulation reset');
+        });
+    </>
+</body>
+</html>
