@@ -1251,13 +1251,13 @@
               } else {
                 // Default: circle marker for cars, bikes, motorcycles, scooters
                 vehicleIcon = L.circleMarker(point, {
-                  radius: vehicleType.size,
-                  fillColor: vehicleType.color,
-                  color: "#333",
-                  weight: 1,
-                  opacity: 0.9,
-                  fillOpacity: 0.8,
-                });
+                radius: vehicleType.size,
+                fillColor: vehicleType.color,
+                color: "#333",
+                weight: 1,
+                opacity: 0.9,
+                fillOpacity: 0.8,
+              });
               }
 
               vehiclesLayer.addLayer(vehicleIcon);
@@ -1530,8 +1530,8 @@
 
       // Optimized GeoJSON processing for large files
       function processGeoJSONOptimized(data) {
-        updateLog("🔄 Processing GeoJSON data (optimized for large files)...");
-
+        updateLog('🔄 Processing GeoJSON data (optimized for large files)...');
+        
         if (!data.features || data.features.length === 0) {
           updateLog('<div class="error">❌ No features found in GeoJSON</div>');
           return;
@@ -1552,39 +1552,27 @@
         let processedCount = 0;
         const totalFeatures = data.features.length;
         const maxFeatures = performanceMode ? 500 : 2000; // Limit features based on performance mode
-
-        updateLog(
-          `📊 Processing ${Math.min(
-            totalFeatures,
-            maxFeatures
-          )} of ${totalFeatures} features...`
-        );
+        
+        updateLog(`📊 Processing ${Math.min(totalFeatures, maxFeatures)} of ${totalFeatures} features...`);
 
         // Process features in chunks to avoid blocking the UI
         const chunkSize = 25; // Smaller chunks for better responsiveness
         let featureIndex = 0;
-
+        
         function processChunk() {
-          const endIndex = Math.min(
-            featureIndex + chunkSize,
-            Math.min(totalFeatures, maxFeatures)
-          );
-
+          const endIndex = Math.min(featureIndex + chunkSize, Math.min(totalFeatures, maxFeatures));
+          
           for (let i = featureIndex; i < endIndex; i++) {
             const feature = data.features[i];
-
-            if (
-              feature.geometry.type === "LineString" &&
-              feature.properties.highway &&
-              feature.properties.road_id
-            ) {
-              const coords = feature.geometry.coordinates.map((c) => [
-                c[1],
-                c[0],
-              ]);
+            
+            if (feature.geometry.type === "LineString" && 
+                feature.properties.highway && 
+                feature.properties.road_id) {
+              
+              const coords = feature.geometry.coordinates.map(c => [c[1], c[0]]);
               const road = L.polyline(coords, { color: "gray", weight: 3 });
               roadsLayer.addLayer(road);
-
+              
               allRoads.push({
                 geometry: coords,
                 properties: feature.properties,
@@ -1593,8 +1581,7 @@
               roadCount++;
 
               // Add vehicles to roads (reduced density for performance)
-              if (Math.random() < 0.5) {
-                // Only 50% of roads get vehicles
+              if (Math.random() < 0.5) { // Only 50% of roads get vehicles
                 addVehiclesToRoad(coords, feature.properties);
               }
 
@@ -1602,32 +1589,23 @@
               if (coords.length > 3 && calculatePathLength(coords) > 0.025) {
                 addTrafficLight(coords, feature.properties);
               }
+              
             } else if (feature.geometry.type === "Point") {
               processPointFeature(feature);
               pointCount++;
             }
-
+            
             processedCount++;
           }
-
+          
           // Update progress
-          if (
-            processedCount % 100 === 0 ||
-            endIndex >= Math.min(totalFeatures, maxFeatures)
-          ) {
-            const progress = Math.round(
-              (processedCount / Math.min(totalFeatures, maxFeatures)) * 100
-            );
-            updateLog(
-              `⏳ Processing: ${progress}% (${processedCount}/${Math.min(
-                totalFeatures,
-                maxFeatures
-              )} features)`
-            );
+          if (processedCount % 100 === 0 || endIndex >= Math.min(totalFeatures, maxFeatures)) {
+            const progress = Math.round((processedCount / Math.min(totalFeatures, maxFeatures)) * 100);
+            updateLog(`⏳ Processing: ${progress}% (${processedCount}/${Math.min(totalFeatures, maxFeatures)} features)`);
           }
-
+          
           featureIndex = endIndex;
-
+          
           // Continue processing or finish
           if (featureIndex < Math.min(totalFeatures, maxFeatures)) {
             setTimeout(processChunk, 5); // Small delay to prevent UI blocking
@@ -1635,21 +1613,19 @@
             finishProcessing();
           }
         }
-
+        
         function finishProcessing() {
           createSyncGroups();
           const lightCount = Object.keys(trafficLights).length;
           const syncGroupCount = Object.keys(syncGroups).length;
-
-          updateLog(
-            `<div class="success">✅ Real GeoJSON data loaded: ${roadCount} roads, ${pointCount} points, ${lightCount} traffic lights (${syncGroupCount} sync groups), ${vehicles.length} vehicles</div>`
-          );
-
+          
+          updateLog(`<div class="success">✅ Real GeoJSON data loaded: ${roadCount} roads, ${pointCount} points, ${lightCount} traffic lights (${syncGroupCount} sync groups), ${vehicles.length} vehicles</div>`);
+          
           if (vehicles.length > 0) {
             setTimeout(startSimulation, 1000);
           }
         }
-
+        
         // Start processing
         processChunk();
       }
@@ -2244,8 +2220,8 @@
             updateVehicleAlongRoute(vehicle, finalSpeed, updates);
           } else {
             // Fallback to simple path following
-            vehicle.pos += finalSpeed;
-            if (vehicle.pos > 1) {
+          vehicle.pos += finalSpeed;
+          if (vehicle.pos > 1) {
               vehicle.pos = 0;
               // Generate new route when looping
               vehicle.destination = generateRandomDestination(currentPosArray);
@@ -2306,12 +2282,12 @@
           vehicle.currentRoadSegment,
           vehicle.routeProgress
         );
-        if (newPoint) {
+          if (newPoint) {
           const laneOffset = vehicle.lane === "left" ? -0.0001 : 0.0001;
-          newPoint[1] += laneOffset;
-          updates.push({ vehicle: vehicle, point: newPoint });
+            newPoint[1] += laneOffset;
+            updates.push({ vehicle: vehicle, point: newPoint });
+          }
         }
-      }
 
       // Find road segment between two graph nodes
       function findRoadSegmentBetweenNodes(nodeA, nodeB) {
@@ -2792,7 +2768,7 @@
               "🔄 Performance mode deactivated - normal rendering restored"
             );
           }
-        });
+         });
 
       document
         .getElementById("loadRealData")
@@ -2800,10 +2776,10 @@
           const button = document.getElementById("loadRealData");
           button.disabled = true;
           button.textContent = "📂 Loading...";
-
+          
           updateLog("🔄 Manual GeoJSON loading requested...");
           loadGeoJSONWithTimeout("bhubaneswar_traffic_flow.geojson");
-
+          
           // Re-enable button after timeout
           setTimeout(() => {
             button.disabled = false;
