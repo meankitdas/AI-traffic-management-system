@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>YOLOv8 WebSocket Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+      .connected {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .data {
+        background-color: #f8f9fa;
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🚗 YOLOv8 WebSocket Connection Test</h1>
+
+    <div id="status" class="status disconnected">Status: Disconnected</div>
+
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+
+    <h2>📊 Live Data</h2>
+    <div id="data-container"></div>
+
+    <h2>📋 Connection Log</h2>
+    <div id="log-container"></div>
+
+    <script>
+      let websocket = null;
+      let messageCount = 0;
+
+      function log(message) {
+        const logContainer = document.getElementById("log-container");
+        const logEntry = document.createElement("div");
+        logEntry.className = "data";
+        logEntry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContainer.insertBefore(logEntry, logContainer.firstChild);
+
+        // Keep only last 10 log entries
+        while (logContainer.children.length > 10) {
+          logContainer.removeChild(logContainer.lastChild);
+        }
+      }
+
+      function updateStatus(connected, message) {
+        const statusDiv = document.getElementById("status");
+        statusDiv.className = connected
+          ? "status connected"
+          : "status disconnected";
+        statusDiv.textContent = `Status: ${message}`;
+      }
+
+      function connect() {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+          log("Already connected");
+          return;
+        }
+
+        log("🔄 Attempting to connect to ws://localhost:8765");
+        updateStatus(false, "Connecting...");
+
+        try {
+          websocket = new WebSocket("ws://localhost:8765");
+
+          websocket.onopen = function (event) {
+            log("✅ Connected successfully!");
+            updateStatus(true, "Connected");
+            messageCount = 0;
+          };
+
+          websocket.onmessage = function (event) {
+            try {
+              const data = JSON.parse(event.data);
+              messageCount++;
+
+              log(
+                `📊 Message #${messageCount}: ${data.vehicle_count} vehicles, ${data.traffic_signal} signal`
+              );
+
+              // Update live data display
+              const dataContainer = document.getElementById("data-container");
+              dataContainer.innerHTML = `
+                            <div class="data">
+                                <strong>🚗 Vehicles:</strong> ${
+                                  data.vehicle_count
+                                } (avg: ${
+                data.avg_vehicle_count?.toFixed(1) || 0
+              })<br>
+                                <strong>🚦 Signal:</strong> ${
+                                  data.traffic_signal
+                                } (${data.signal_timer?.toFixed(1) || 0}s)<br>
+                                <strong>📊 Congestion:</strong> ${
+                                  data.congestion_level
+                                }<br>
+                                <strong>🕐 Timestamp:</strong> ${
+                                  data.timestamp
+                                }<br>
+                                <strong>📈 Messages:</strong> ${messageCount}
+                            </div>
+                        `;
+            } catch (error) {
+              log(`❌ Error parsing message: ${error}`);
+            }
+          };
+
+          websocket.onclose = function (event) {
+            log(
+              `🔌 Connection closed. Code: ${event.code}, Reason: ${event.reason}`
+            );
+            updateStatus(false, "Disconnected");
+          };
+
+          websocket.onerror = function (error) {
+            log(`❌ WebSocket error: ${error}`);
+            updateStatus(false, "Error");
+          };
+        } catch (error) {
+          log(`❌ Failed to create connection: ${error}`);
+          updateStatus(false, "Failed");
+        }
+      }
+
+      function disconnect() {
+        if (websocket) {
+          websocket.close();
+          websocket = null;
+          log("🔌 Disconnected by user");
+          updateStatus(false, "Disconnected");
+        }
+      }
+
+      // Auto-connect on page load
+      window.onload = function () {
+        log("🌐 Page loaded. Click Connect to start.");
+      };
+    </script>
+  </body>
+</html>

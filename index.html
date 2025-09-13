@@ -65,12 +65,12 @@
             "Xenova/all-MiniLM-L6-v2"
           );
           window.transformersLoaded = true;
-          console.log("🤗 Hugging Face models loaded successfully!");
+          console.log("AI models loaded successfully!");
 
           // Update status
           if (document.getElementById("neural-status")) {
             document.getElementById("neural-status").textContent =
-              "AI Status: Hugging Face Pre-trained Model Ready 🤗";
+              "AI Status: AI Pre-trained Model Ready";
           }
 
           // Update AI display when Hugging Face models are loaded
@@ -226,6 +226,84 @@
         border-radius: 8px;
         padding: 10px;
       }
+
+      /* Video modal z-index fixes - HIGHEST PRIORITY */
+      #video-modal {
+        z-index: 9999 !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: rgba(0, 0, 0, 0.9) !important;
+      }
+
+      /* Force hide all Leaflet map elements when video modal is open */
+      body.video-modal-open .leaflet-control-container,
+      body.video-modal-open .leaflet-popup-pane,
+      body.video-modal-open .leaflet-tooltip-pane,
+      body.video-modal-open .leaflet-marker-pane,
+      body.video-modal-open .leaflet-shadow-pane,
+      body.video-modal-open .leaflet-overlay-pane,
+      body.video-modal-open .leaflet-tile-pane {
+        display: none !important;
+        visibility: hidden !important;
+        z-index: 1 !important;
+      }
+
+      body.video-modal-open #map,
+      body.video-modal-open .leaflet-container {
+        z-index: 1 !important;
+        position: relative !important;
+      }
+
+      /* Ensure video modal content is always visible */
+      #video-modal * {
+        z-index: inherit !important;
+      }
+
+      #video-modal button {
+        z-index: 10000 !important;
+      }
+
+      /* Efficiency Analysis modal z-index fixes - HIGHEST PRIORITY */
+      #efficiency-modal {
+        z-index: 9998 !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: rgba(0, 0, 0, 0.5) !important;
+      }
+
+      /* Force hide all Leaflet map elements when efficiency modal is open */
+      body.efficiency-modal-open .leaflet-control-container,
+      body.efficiency-modal-open .leaflet-popup-pane,
+      body.efficiency-modal-open .leaflet-tooltip-pane,
+      body.efficiency-modal-open .leaflet-marker-pane,
+      body.efficiency-modal-open .leaflet-shadow-pane,
+      body.efficiency-modal-open .leaflet-overlay-pane,
+      body.efficiency-modal-open .leaflet-tile-pane {
+        display: none !important;
+        visibility: hidden !important;
+        z-index: 1 !important;
+      }
+
+      body.efficiency-modal-open #map,
+      body.efficiency-modal-open .leaflet-container {
+        z-index: 1 !important;
+        position: relative !important;
+      }
+
+      /* Ensure efficiency modal content is always visible */
+      #efficiency-modal * {
+        z-index: inherit !important;
+      }
+
+      #efficiency-modal button {
+        z-index: 10000 !important;
+      }
     </style>
   </head>
   <body class="bg-gray-50 min-h-screen">
@@ -315,9 +393,7 @@
               <button id="trainNN" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
                 Train Neural Network
               </button>
-              <button id="collectData" class="w-full bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
-                Collect Data
-              </button>
+              
               <button id="reduceVehicles" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
                 Reduce Vehicles
               </button>
@@ -531,6 +607,103 @@
                 </div>
                 <span class="font-medium text-gray-900" id="kpi-red-count">0</span>
               </div>
+            </div>
+          </div>
+
+          <!-- YOLOv8 Vehicle Detection -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-gray-900">YOLOv8 Live Detection</h3>
+              <div id="yolo-status" class="flex items-center space-x-2">
+                <div class="w-2 h-2 bg-gray-400 rounded-full" id="yolo-indicator"></div>
+                <span class="text-xs text-gray-600" id="yolo-status-text">Disconnected</span>
+              </div>
+            </div>
+            
+            <!-- Video Stream Display -->
+            <div id="yolo-video-container" class="hidden mb-4">
+              <div class="relative bg-black rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow duration-200" style="aspect-ratio: 16/9;" onclick="expandVideo()">
+                <img id="yolo-video-stream" 
+                     src="" 
+                     alt="YOLOv8 Live Detection Stream" 
+                     class="w-full h-full object-cover">
+                <!-- Live Indicator Overlay -->
+                <div id="live-indicator" class="absolute top-2 left-2 bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold animate-pulse">
+                  🔴 LIVE
+                </div>
+                <!-- Stream Info Overlay -->
+                <div class="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-xs">
+                  <span id="stream-info">YOLOv8 Real-time Detection</span>
+                </div>
+                <!-- Click to expand indicator -->
+                <div class="absolute top-2 right-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs opacity-75 hover:opacity-100 transition-opacity">
+                  🔍 Click to expand
+                </div>
+              </div>
+            </div>
+
+            <!-- Expanded Video Modal -->
+            <div id="video-modal" class="fixed inset-0 bg-black bg-opacity-90 z-[9999] hidden flex items-center justify-center p-4" style="position: fixed !important; z-index: 9999 !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important;">
+              <div class="relative w-full h-full max-w-7xl max-h-full flex items-center justify-center">
+                <!-- Close button -->
+                <button onclick="closeVideoModal()" class="absolute top-4 right-4 z-[10000] bg-red-600 hover:bg-red-700 text-white rounded-full p-2 transition-colors duration-200">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+                
+                <!-- Expanded video container -->
+                <div class="relative bg-black rounded-lg overflow-hidden w-full h-full max-w-6xl max-h-[90vh]" style="aspect-ratio: 16/9;">
+                  <img id="yolo-video-stream-expanded" 
+                       src="" 
+                       alt="YOLOv8 Live Detection Stream - Expanded" 
+                       class="w-full h-full object-contain">
+                  
+                  <!-- Live Indicator for expanded view -->
+                  <div class="absolute top-4 left-4 bg-red-600 text-white px-3 py-2 rounded-lg text-lg font-bold animate-pulse">
+                    🔴 LIVE - EXPANDED VIEW
+                  </div>
+                  
+                  <!-- Expanded stream info -->
+                  <div class="absolute bottom-4 right-4 bg-black bg-opacity-75 text-white px-4 py-2 rounded-lg">
+                    <div class="text-sm">YOLOv8 Real-time Detection</div>
+                    <div class="text-xs opacity-75" id="expanded-stream-info">Click outside or press ESC to close</div>
+                  </div>
+                  
+                  <!-- Video controls overlay -->
+                  <div class="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white px-4 py-2 rounded-lg">
+                    <div class="text-sm font-medium">Fullscreen Mode</div>
+                    <div class="text-xs opacity-75">Press F for fullscreen browser mode</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Vehicle Count Display -->
+            
+
+            <!-- Traffic Signal Simulation -->
+            
+
+            <!-- Congestion Level -->
+            <div class="space-y-2">
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-600">Congestion Level</span>
+                <span class="font-medium" id="congestion-level">Low</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="congestion-bar" class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: 20%"></div>
+              </div>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="flex gap-2 mt-4">
+              <button id="start-yolo" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors duration-200">
+                Start Detection
+              </button>
+              <button id="stop-yolo" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors duration-200" disabled>
+                Stop Detection
+              </button>
             </div>
           </div>
 
@@ -4178,6 +4351,27 @@
 
       function showEfficiencyModal() {
         const modal = document.getElementById("efficiency-modal");
+        const mapContainer = document.getElementById('map');
+        
+        // Ensure modal is on top of everything (including Leaflet map)
+        modal.style.zIndex = '9998';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        
+        // Lower map z-index to prevent interference
+        if (mapContainer) {
+          mapContainer.style.zIndex = '1';
+        }
+        
+        // Add body class to trigger CSS hiding of map elements
+        document.body.classList.add('efficiency-modal-open');
+        
+        // Prevent body scrolling
+        document.body.style.overflow = 'hidden';
+        
         modal.classList.remove("hidden");
         modal.classList.add("flex");
         
@@ -4197,8 +4391,21 @@
 
       function hideEfficiencyModal() {
         const modal = document.getElementById("efficiency-modal");
+        const mapContainer = document.getElementById('map');
+        
         modal.classList.add("hidden");
         modal.classList.remove("flex");
+        
+        // Restore map z-index
+        if (mapContainer) {
+          mapContainer.style.zIndex = '';
+        }
+        
+        // Remove body class to restore map elements
+        document.body.classList.remove('efficiency-modal-open');
+        
+        // Restore body scrolling
+        document.body.style.overflow = '';
       }
 
       async function runEfficiencyAnalysisInModal() {
@@ -4214,9 +4421,9 @@
           <div class="space-y-4">
             <div class="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
               <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span class="text-blue-800 font-medium">🔬 AI Efficiency Analysis Started</span>
+              <span class="text-blue-800 font-medium">AI Efficiency Analysis Started</span>
             </div>
-            <div class="text-sm text-gray-600 pl-9">📊 Step 1: Collecting traffic flow data...</div>
+            <div class="text-sm text-gray-600 pl-9">Step 1: Collecting traffic flow data...</div>
           </div>
         `;
 
@@ -4230,18 +4437,18 @@
         var totalRoads = Object.keys(roadCongestionLevels).length;
 
         content.innerHTML += `
-          <div class="text-sm text-gray-600 pl-9">📊 Step 2: Analyzing traffic patterns...</div>
-          <div class="text-sm text-gray-600 pl-9">📈 Current metrics: Avg Speed: ${avgSpeed.toFixed(1)} km/h, Green Roads: ${greenRoads}/${totalRoads}</div>
+          <div class="text-sm text-gray-600 pl-9">Step 2: Analyzing traffic patterns...</div>
+          <div class="text-sm text-gray-600 pl-9">Current metrics: Avg Speed: ${avgSpeed.toFixed(1)} km/h, Green Roads: ${greenRoads}/${totalRoads}</div>
         `;
 
         await sleep(2000);
 
         // Step 3: AI Processing
-        content.innerHTML += `<div class="text-sm text-gray-600 pl-9">🤖 Step 3: Running AI optimization calculations...</div>`;
+        content.innerHTML += `<div class="text-sm text-gray-600 pl-9">Step 3: Running AI optimization calculations...</div>`;
 
         for(let i = 0; i < 5; i++) {
           await sleep(300);
-          content.innerHTML += `<div class="text-sm text-gray-500 pl-12">💡 Processing neural network layer ${i + 1}/5...</div>`;
+          content.innerHTML += `<div class="text-sm text-gray-500 pl-12">Processing neural network layer ${i + 1}/5...</div>`;
         }
 
         await sleep(1000);
@@ -4252,8 +4459,8 @@
         var traditionalEfficiency = currentEfficiency - aiImprovement;
 
         content.innerHTML += `
-          <div class="text-sm text-gray-600 pl-9">📊 Step 4: Comparing AI vs Traditional Systems...</div>
-          <div class="text-sm text-gray-600 pl-9">📈 Calculating efficiency improvements with AI optimization algorithms...</div>
+          <div class="text-sm text-gray-600 pl-9">Step 4: Comparing AI vs Traditional Systems...</div>
+          <div class="text-sm text-gray-600 pl-9">Calculating efficiency improvements with AI optimization algorithms...</div>
         `;
 
         await sleep(2500);
@@ -4267,7 +4474,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
               </div>
-              <h4 class="text-xl font-bold text-green-600 mb-2">✅ Analysis Complete!</h4>
+              <h4 class="text-xl font-bold text-green-600 mb-2">Analysis Complete!</h4>
             </div>
             
             <div class="grid grid-cols-2 gap-4">
@@ -4284,9 +4491,9 @@
             </div>
             
             <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center">
-              <div class="text-lg font-bold text-blue-800">🎯 AI Efficiency Improvement</div>
+              <div class="text-lg font-bold text-blue-800">AI Efficiency Improvement</div>
               <div class="text-3xl font-bold text-blue-600">+${aiImprovement}%</div>
-              <div class="text-sm text-blue-700 mt-2">💡 The AI approach reduces congestion by <strong>9.5%</strong> compared to traditional traffic management systems!</div>
+              <div class="text-sm text-blue-700 mt-2">The AI approach reduces congestion by <strong>9.5%</strong> compared to traditional traffic management systems!</div>
             </div>
             
             <div class="space-y-2 text-sm">
@@ -4803,6 +5010,352 @@
           console.warn("Dashboard update failed:", e);
         }
       }
+
+      // YOLOv8 WebSocket Connection and UI Management
+      let yoloWebSocket = null;
+      let yoloConnected = false;
+      let yoloProcess = null;
+      let videoStreamActive = false;
+
+      function updateYoloStatus(connected, statusText) {
+        const indicator = document.getElementById('yolo-indicator');
+        const statusTextEl = document.getElementById('yolo-status-text');
+        
+        if (connected) {
+          indicator.className = 'w-2 h-2 bg-green-500 rounded-full animate-pulse';
+          statusTextEl.textContent = statusText || 'Connected';
+          statusTextEl.className = 'text-xs text-green-600 font-medium';
+        } else {
+          indicator.className = 'w-2 h-2 bg-red-500 rounded-full';
+          statusTextEl.textContent = statusText || 'Disconnected';
+          statusTextEl.className = 'text-xs text-red-600';
+        }
+        yoloConnected = connected;
+      }
+
+      function showVideoStream() {
+        const container = document.getElementById('yolo-video-container');
+        const videoStream = document.getElementById('yolo-video-stream');
+        const streamInfo = document.getElementById('stream-info');
+        
+        // Show video container
+        container.classList.remove('hidden');
+        
+        // Set video source to Flask stream with cache busting
+        const timestamp = new Date().getTime();
+        videoStream.src = `http://localhost:5001/video_feed?t=${timestamp}`;
+        
+        // Add error handling
+        videoStream.onerror = function() {
+          console.error('❌ Video stream failed to load');
+          updateYoloStatus(false, 'Stream Error');
+          container.innerHTML = `
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+              <p class="text-red-600 font-medium">❌ Video Stream Error</p>
+              <p class="text-red-500 text-sm mt-2">Make sure the YOLOv8 server is running:</p>
+              <code class="text-xs bg-red-100 px-2 py-1 rounded">python yolo_simple_streamer.py</code>
+            </div>
+          `;
+        };
+        
+        videoStream.onload = function() {
+          console.log('✅ Video stream loaded successfully');
+          updateYoloStatus(true, 'Streaming Live');
+        };
+        
+        // Update stream info
+        streamInfo.textContent = `YOLOv8 Live Detection - ${new Date().toLocaleTimeString()}`;
+        
+        videoStreamActive = true;
+        console.log('📺 Video stream displayed in browser');
+        console.log('🔗 Stream URL:', videoStream.src);
+      }
+
+      function hideVideoStream() {
+        const container = document.getElementById('yolo-video-container');
+        const videoStream = document.getElementById('yolo-video-stream');
+        const expandedStream = document.getElementById('yolo-video-stream-expanded');
+        
+        // Hide video container
+        container.classList.add('hidden');
+        
+        // Hide modal if open
+        closeVideoModal();
+        
+        // Clear video sources
+        videoStream.src = '';
+        expandedStream.src = '';
+        
+        videoStreamActive = false;
+        console.log('📺 Video stream hidden');
+      }
+
+      function expandVideo() {
+        if (!videoStreamActive) return;
+        
+        const modal = document.getElementById('video-modal');
+        const originalStream = document.getElementById('yolo-video-stream');
+        const expandedStream = document.getElementById('yolo-video-stream-expanded');
+        const expandedInfo = document.getElementById('expanded-stream-info');
+        const mapContainer = document.getElementById('map');
+        
+        // Copy video source to expanded view
+        expandedStream.src = originalStream.src;
+        
+        // Update expanded stream info
+        expandedInfo.textContent = `Expanded at ${new Date().toLocaleTimeString()} - Click outside or press ESC to close`;
+        
+        // Ensure modal is on top of everything (including Leaflet map)
+        modal.style.zIndex = '9999';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        
+        // Lower map z-index to prevent interference
+        if (mapContainer) {
+          mapContainer.style.zIndex = '1';
+        }
+        
+        // Show modal
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        
+        // Add body class to trigger CSS hiding of map elements
+        document.body.classList.add('video-modal-open');
+        
+        // Prevent body scrolling
+        document.body.style.overflow = 'hidden';
+        
+        console.log('🔍 Video expanded to fullscreen view');
+      }
+
+      function closeVideoModal() {
+        const modal = document.getElementById('video-modal');
+        const expandedStream = document.getElementById('yolo-video-stream-expanded');
+        const mapContainer = document.getElementById('map');
+        
+        // Hide modal
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        
+        // Clear expanded video source to save bandwidth
+        expandedStream.src = '';
+        
+        // Restore map z-index
+        if (mapContainer) {
+          mapContainer.style.zIndex = '';
+        }
+        
+        // Remove body class to restore map elements
+        document.body.classList.remove('video-modal-open');
+        
+        // Restore body scrolling
+        document.body.style.overflow = '';
+        
+        console.log('📺 Video modal closed');
+      }
+
+      function updateTrafficSignal(signal, timer) {
+        const signals = {
+          red: document.getElementById('signal-red'),
+          yellow: document.getElementById('signal-yellow'),
+          green: document.getElementById('signal-green')
+        };
+        const signalText = document.getElementById('current-signal-text');
+        const timerEl = document.getElementById('signal-timer');
+
+        // Reset all signals
+        Object.values(signals).forEach(s => {
+          s.className = 'w-4 h-4 rounded-full bg-gray-300 transition-all duration-300';
+        });
+
+        // Activate current signal
+        const colors = {
+          red: 'w-4 h-4 rounded-full bg-red-500 shadow-lg transition-all duration-300',
+          yellow: 'w-4 h-4 rounded-full bg-yellow-500 shadow-lg transition-all duration-300',
+          green: 'w-4 h-4 rounded-full bg-green-500 shadow-lg transition-all duration-300'
+        };
+
+        if (signals[signal]) {
+          signals[signal].className = colors[signal];
+          signalText.textContent = signal.charAt(0).toUpperCase() + signal.slice(1);
+          signalText.className = `text-sm font-medium text-${signal === 'green' ? 'green' : signal === 'yellow' ? 'yellow' : 'red'}-600`;
+        }
+
+        if (timerEl) {
+          timerEl.textContent = Math.round(timer) + 's';
+        }
+      }
+
+      function updateCongestionLevel(level, vehicleCount) {
+        const congestionEl = document.getElementById('congestion-level');
+        const congestionBar = document.getElementById('congestion-bar');
+        
+        const levels = {
+          low: { text: 'Low', color: 'text-green-600', barColor: 'bg-green-500', width: '20%' },
+          medium: { text: 'Medium', color: 'text-yellow-600', barColor: 'bg-yellow-500', width: '60%' },
+          high: { text: 'High', color: 'text-red-600', barColor: 'bg-red-500', width: '90%' }
+        };
+
+        const config = levels[level] || levels.low;
+        congestionEl.textContent = config.text;
+        congestionEl.className = `font-medium ${config.color}`;
+        congestionBar.className = `${config.barColor} h-2 rounded-full transition-all duration-500`;
+        congestionBar.style.width = config.width;
+      }
+
+      function connectYoloWebSocket() {
+        if (yoloWebSocket && yoloWebSocket.readyState === WebSocket.OPEN) {
+          console.log('🔗 WebSocket already connected');
+          return;
+        }
+
+        console.log('🔄 Attempting WebSocket connection to ws://localhost:8765');
+        updateYoloStatus(false, 'Connecting...');
+        
+        try {
+          yoloWebSocket = new WebSocket('ws://localhost:8765');
+          
+          yoloWebSocket.onopen = function(event) {
+            console.log('🔗 Connected to YOLOv8 detector successfully!');
+            updateYoloStatus(true, 'Active');
+          };
+          
+          yoloWebSocket.onmessage = function(event) {
+            try {
+              const data = JSON.parse(event.data);
+              
+              // Update vehicle count
+              document.getElementById('yolo-vehicle-count').textContent = data.vehicle_count || 0;
+              document.getElementById('yolo-avg-count').textContent = (data.avg_vehicle_count || 0).toFixed(1);
+              
+              // Update traffic signal
+              updateTrafficSignal(data.traffic_signal || 'green', data.signal_timer || 0);
+              
+              // Update congestion level
+              updateCongestionLevel(data.congestion_level || 'low', data.vehicle_count || 0);
+              
+              console.log('📊 YOLOv8 Data received:', {
+                vehicles: data.vehicle_count,
+                signal: data.traffic_signal,
+                congestion: data.congestion_level,
+                timestamp: data.timestamp
+              });
+              
+            } catch (error) {
+              console.error('❌ Error parsing YOLOv8 data:', error);
+            }
+          };
+          
+          yoloWebSocket.onclose = function(event) {
+            console.log('🔌 YOLOv8 WebSocket closed. Code:', event.code, 'Reason:', event.reason);
+            updateYoloStatus(false, 'Disconnected');
+            
+            // Auto-reconnect after 5 seconds if it was connected before
+            if (yoloConnected) {
+              console.log('🔄 Will attempt to reconnect in 5 seconds...');
+              setTimeout(connectYoloWebSocket, 5000);
+            }
+          };
+          
+          yoloWebSocket.onerror = function(error) {
+            console.error('❌ YOLOv8 WebSocket error occurred:', error);
+            console.error('💡 Make sure the YOLOv8 server is running: python yolo_traffic_detector.py');
+            updateYoloStatus(false, 'Connection Error');
+          };
+          
+        } catch (error) {
+          console.error('❌ Failed to create WebSocket connection:', error);
+          updateYoloStatus(false, 'Failed to Connect');
+        }
+      }
+
+      function disconnectYoloWebSocket() {
+        if (yoloWebSocket) {
+          yoloWebSocket.close();
+          yoloWebSocket = null;
+        }
+        updateYoloStatus(false, 'Disconnected');
+      }
+
+      // Keyboard event listeners for video modal
+      document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+          closeVideoModal();
+        }
+        if (event.key === 'f' || event.key === 'F') {
+          const modal = document.getElementById('video-modal');
+          if (!modal.classList.contains('hidden')) {
+            // Toggle fullscreen if modal is open
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else {
+              document.documentElement.requestFullscreen();
+            }
+          }
+        }
+      });
+
+      // Click outside modal to close
+      document.addEventListener('click', function(event) {
+        const modal = document.getElementById('video-modal');
+        if (event.target === modal) {
+          closeVideoModal();
+        }
+      });
+
+      // Button event handlers
+      document.addEventListener('DOMContentLoaded', function() {
+        const startBtn = document.getElementById('start-yolo');
+        const stopBtn = document.getElementById('stop-yolo');
+        
+        startBtn.addEventListener('click', function() {
+          console.log('🔄 Starting YOLOv8 video detection...');
+          
+          // Start video stream immediately
+          showVideoStream();
+          
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          startBtn.textContent = 'Starting Stream...';
+          
+          // Update UI after starting
+          setTimeout(() => {
+            if (videoStreamActive) {
+              startBtn.textContent = 'Live Stream Active';
+              startBtn.className = 'flex-1 bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium cursor-not-allowed opacity-75';
+              updateYoloStatus(true, 'Streaming Live');
+              console.log('✅ YOLOv8 video stream started!');
+              console.log('📺 Live video with detections now showing in browser');
+            } else {
+              // Stream failed to start
+              startBtn.textContent = 'Retry Connection';
+              startBtn.className = 'flex-1 bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors duration-200';
+              startBtn.disabled = false;
+              stopBtn.disabled = true;
+              updateYoloStatus(false, 'Connection Failed');
+            }
+          }, 2000);
+        });
+        
+        stopBtn.addEventListener('click', function() {
+          console.log('🛑 Stopping YOLOv8 video detection...');
+          
+          // Hide video stream
+          hideVideoStream();
+          
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          startBtn.textContent = 'Start Detection';
+          startBtn.className = 'flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors duration-200';
+          
+          updateYoloStatus(false, 'Stopped');
+          
+          console.log('✅ YOLOv8 video stream stopped');
+        });
+      });
     </script>
   </body>
 </html>
