@@ -65,12 +65,12 @@
             "Xenova/all-MiniLM-L6-v2"
           );
           window.transformersLoaded = true;
-          console.log("AI models loaded successfully!");
+            console.log("Hugging Face models loaded successfully!");
 
           // Update status
           if (document.getElementById("neural-status")) {
             document.getElementById("neural-status").textContent =
-              "AI Status: AI Pre-trained Model Ready";
+              "AI Status: Hugging Face Pre-trained Model Ready";
           }
 
           // Update AI display when Hugging Face models are loaded
@@ -266,7 +266,7 @@
         z-index: 10000 !important;
       }
 
-      /* Efficiency Analysis modal z-index fixes - HIGHEST PRIORITY */
+      /* AI Efficiency Analysis modal z-index fixes - HIGHEST PRIORITY */
       #efficiency-modal {
         z-index: 9998 !important;
         position: fixed !important;
@@ -393,7 +393,9 @@
               <button id="trainNN" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
                 Train Neural Network
               </button>
-              
+              <button id="collectData" class="w-full bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
+                Collect Data
+              </button>
               <button id="reduceVehicles" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium">
                 Reduce Vehicles
               </button>
@@ -4311,7 +4313,18 @@
       document
         .getElementById("collectData")
         .addEventListener("click", function () {
-          updateLog("📊 Fast data collection started...");
+          const button = document.getElementById("collectData");
+          const neuralStatus = document.getElementById("neural-status");
+          const originalButtonText = button.textContent;
+          const originalStatusText = neuralStatus.textContent;
+          
+          // Update button and status to show progress
+          button.textContent = "Collecting...";
+          button.disabled = true;
+          neuralStatus.textContent = "Fast data collection started...";
+          
+          // Log immediate feedback
+          console.log(`🚀 Starting fast data collection. Current samples: ${trafficData.length}`);
 
           // Collect 20 samples quickly
           for (var i = 0; i < 20; i++) {
@@ -4321,9 +4334,19 @@
           }
 
           setTimeout(function () {
-            updateLog(
-              `✅ Fast collection complete. Total samples: ${trafficData.length}`
-            );
+            const totalSamples = trafficData.length;
+            neuralStatus.textContent = `Data collection complete. Total samples: ${totalSamples}`;
+            button.textContent = originalButtonText;
+            button.disabled = false;
+            
+            // Log to console for debugging
+            console.log(`✅ Fast data collection completed. Total samples: ${totalSamples}`);
+            console.log('Latest sample:', trafficData[trafficData.length - 1]);
+            
+            // Restore original status after 3 seconds
+            setTimeout(function() {
+              neuralStatus.textContent = originalStatusText;
+            }, 3000);
           }, 2100);
         });
 
@@ -4349,31 +4372,31 @@
         runEfficiencyAnalysisInModal();
       });
 
-      function showEfficiencyModal() {
-        const modal = document.getElementById("efficiency-modal");
-        const mapContainer = document.getElementById('map');
-        
-        // Ensure modal is on top of everything (including Leaflet map)
-        modal.style.zIndex = '9998';
-        modal.style.position = 'fixed';
-        modal.style.top = '0';
-        modal.style.left = '0';
-        modal.style.width = '100vw';
-        modal.style.height = '100vh';
-        
-        // Lower map z-index to prevent interference
-        if (mapContainer) {
-          mapContainer.style.zIndex = '1';
-        }
-        
-        // Add body class to trigger CSS hiding of map elements
-        document.body.classList.add('efficiency-modal-open');
-        
-        // Prevent body scrolling
-        document.body.style.overflow = 'hidden';
-        
-        modal.classList.remove("hidden");
-        modal.classList.add("flex");
+        function showEfficiencyModal() {
+          const modal = document.getElementById("efficiency-modal");
+          const mapContainer = document.getElementById('map');
+          
+          // Ensure modal is on top of everything (including Leaflet map)
+          modal.style.zIndex = '9998';
+          modal.style.position = 'fixed';
+          modal.style.top = '0';
+          modal.style.left = '0';
+          modal.style.width = '100vw';
+          modal.style.height = '100vh';
+          
+          // Lower map z-index to prevent interference
+          if (mapContainer) {
+            mapContainer.style.zIndex = '1';
+          }
+          
+          // Add body class to trigger CSS hiding of map elements
+          document.body.classList.add('efficiency-modal-open');
+          
+          // Prevent body scrolling
+          document.body.style.overflow = 'hidden';
+          
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
         
         // Reset content
         document.getElementById("efficiency-content").innerHTML = `
@@ -4389,24 +4412,24 @@
         `;
       }
 
-      function hideEfficiencyModal() {
-        const modal = document.getElementById("efficiency-modal");
-        const mapContainer = document.getElementById('map');
-        
-        modal.classList.add("hidden");
-        modal.classList.remove("flex");
-        
-        // Restore map z-index
-        if (mapContainer) {
-          mapContainer.style.zIndex = '';
+        function hideEfficiencyModal() {
+          const modal = document.getElementById("efficiency-modal");
+          const mapContainer = document.getElementById('map');
+          
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+          
+          // Restore map z-index
+          if (mapContainer) {
+            mapContainer.style.zIndex = '';
+          }
+          
+          // Remove body class to restore map elements
+          document.body.classList.remove('efficiency-modal-open');
+          
+          // Restore body scrolling
+          document.body.style.overflow = '';
         }
-        
-        // Remove body class to restore map elements
-        document.body.classList.remove('efficiency-modal-open');
-        
-        // Restore body scrolling
-        document.body.style.overflow = '';
-      }
 
       async function runEfficiencyAnalysisInModal() {
         const button = document.getElementById("run-analysis");
@@ -4419,11 +4442,11 @@
         // Step 1: Initialize analysis
         content.innerHTML = `
           <div class="space-y-4">
-            <div class="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
-              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span class="text-blue-800 font-medium">AI Efficiency Analysis Started</span>
-            </div>
-            <div class="text-sm text-gray-600 pl-9">Step 1: Collecting traffic flow data...</div>
+              <div class="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span class="text-blue-800 font-medium">AI Efficiency Analysis Started</span>
+              </div>
+              <div class="text-sm text-gray-600 pl-9">Step 1: Collecting traffic flow data...</div>
           </div>
         `;
 
@@ -4436,10 +4459,10 @@
         var redRoads = Object.values(roadCongestionLevels).filter((r) => r.level >= 3).length;
         var totalRoads = Object.keys(roadCongestionLevels).length;
 
-        content.innerHTML += `
-          <div class="text-sm text-gray-600 pl-9">Step 2: Analyzing traffic patterns...</div>
-          <div class="text-sm text-gray-600 pl-9">Current metrics: Avg Speed: ${avgSpeed.toFixed(1)} km/h, Green Roads: ${greenRoads}/${totalRoads}</div>
-        `;
+          content.innerHTML += `
+            <div class="text-sm text-gray-600 pl-9">Step 2: Analyzing traffic patterns...</div>
+            <div class="text-sm text-gray-600 pl-9">Current metrics: Avg Speed: ${avgSpeed.toFixed(1)} km/h, Green Roads: ${greenRoads}/${totalRoads}</div>
+          `;
 
         await sleep(2000);
 
@@ -4458,10 +4481,10 @@
         var aiImprovement = 9.5;
         var traditionalEfficiency = currentEfficiency - aiImprovement;
 
-        content.innerHTML += `
-          <div class="text-sm text-gray-600 pl-9">Step 4: Comparing AI vs Traditional Systems...</div>
-          <div class="text-sm text-gray-600 pl-9">Calculating efficiency improvements with AI optimization algorithms...</div>
-        `;
+          content.innerHTML += `
+            <div class="text-sm text-gray-600 pl-9">Step 4: Comparing AI vs Traditional Systems...</div>
+            <div class="text-sm text-gray-600 pl-9">Calculating efficiency improvements with AI optimization algorithms...</div>
+          `;
 
         await sleep(2500);
 
@@ -4474,7 +4497,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
               </div>
-              <h4 class="text-xl font-bold text-green-600 mb-2">Analysis Complete!</h4>
+                <h4 class="text-xl font-bold text-green-600 mb-2">Analysis Complete!</h4>
             </div>
             
             <div class="grid grid-cols-2 gap-4">
@@ -4490,11 +4513,11 @@
               </div>
             </div>
             
-            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center">
-              <div class="text-lg font-bold text-blue-800">AI Efficiency Improvement</div>
-              <div class="text-3xl font-bold text-blue-600">+${aiImprovement}%</div>
-              <div class="text-sm text-blue-700 mt-2">The AI approach reduces congestion by <strong>9.5%</strong> compared to traditional traffic management systems!</div>
-            </div>
+              <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 text-center">
+                <div class="text-lg font-bold text-blue-800">AI Efficiency Improvement</div>
+                <div class="text-3xl font-bold text-blue-600">+${aiImprovement}%</div>
+                <div class="text-sm text-blue-700 mt-2">The AI approach reduces congestion by <strong>9.5%</strong> compared to traditional traffic management systems!</div>
+              </div>
             
             <div class="space-y-2 text-sm">
               <div class="flex items-center space-x-2">
